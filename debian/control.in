@@ -1,0 +1,78 @@
+Source: mutter
+Section: x11
+Priority: extra
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Uploaders: @GNOME_TEAM@
+Build-Depends: cdbs,
+    debhelper (>= 7),
+    libglib2.0-dev (>= 2.6.0),
+    libgtk2.0-dev (>= 2.10.0),
+    libclutter-0.9-dev (>= 0.9.8-0ubuntu1),
+    libgirepository1.0-dev (>= 0.6.3),
+    gobject-introspection (>= 0.6.3-1ubuntu2),
+    gobject-introspection-glib-2.0 (>= 0.6.3-1ubuntu2),
+    gobject-introspection-freedesktop (>= 0.6.3-1ubuntu2),
+    gobject-introspection-repository (>= 0.6.4~git20090630-0ubuntu1),
+    gettext,
+    libpango1.0-dev (>= 1.2.0),
+    libgconf2-dev (>= 1.2.0),
+    libstartup-notification0-dev (>= 0.7),
+    libxcomposite-dev (>= 1:0.2),
+    libxfixes-dev,
+    libxrender-dev,
+    libxdamage-dev,
+    libxcursor-dev,
+    libxinerama-dev,
+    x11proto-xext-dev,
+    libx11-dev,
+    libxrandr-dev,
+    libsm-dev,
+    zenity,
+    gnome-doc-utils (>= 0.8.0),
+    gnome-pkg-tools
+Standards-Version: 3.8.1
+Homepage: http://live.gnome.org/GnomeShell
+
+Package: mutter
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: A Window Manager with Clutter-based compositing
+ Mutter is GTK2 base windows manager. It is a branch of Metacity,
+ adding Clutter-based compositing.
+ .
+ This package contains the core binaries.
+
+Package: libmutter0
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         mutter-common (= ${source:Version})
+Description: A Window Manager with Clutter-based compositing
+ Mutter is GTK2 base windows manager. It is a branch of Metacity,
+ adding Clutter-based compositing.
+ .
+ This package contains the shared library.
+
+Package: mutter-common
+Section: misc
+Architecture: all
+Depends: ${misc:Depends}
+Description: A Window Manager with Clutter-based compositing
+ Mutter is GTK2 base windows manager. It is a branch of Metacity,
+ adding Clutter-based compositing.
+ .
+ This package contains the shared files.
+
+Package: libmutter-dev
+Section: libdevel
+Architecture: any
+Depends: ${misc:Depends},
+         libmutter0 (= ${binary:Version}),
+         libgtk2.0-dev (>= 2.10.0),
+         libclutter-0.9-dev (>= 0.9.4-0ubuntu2)
+Description: A Window Manager with Clutter-based compositing
+ Mutter is GTK2 base windows manager. It is a branch of Metacity,
+ adding Clutter-based compositing.
+ .
+ This package contains the development files.
