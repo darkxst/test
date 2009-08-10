@@ -147,6 +147,8 @@ libmutter_private_la_LIBADD  = @MUTTER_LIBS@
 
 libmutterincludedir = $(includedir)/mutter/mutter-private
 
+# Headers installed for plugins; introspected information will
+# be extracted into Mutter-<version>.gir
 libmutterinclude_base_headers =		\
 	include/alttabhandler.h			\
 	include/boxes.h				\
@@ -154,7 +156,6 @@ libmutterinclude_base_headers =		\
 	include/main.h				\
 	include/util.h				\
 	include/common.h			\
-	ui/preview-widget.h			\
 	ui/theme-parser.h			\
 	ui/theme.h				\
 	include/prefs.h				\
@@ -171,7 +172,10 @@ libmutterinclude_base_headers =		\
 	include/mutter-window.h
 
 # Excluded from scanning for introspection but installed
+# preview-widget.h: only part of libmutter-private
+# atomnames.h: macros cause problems for scanning process
 libmutterinclude_extra_headers =		\
+	ui/preview-widget.h			\
 	include/atomnames.h
 
 libmutterinclude_HEADERS =			\
@@ -198,7 +202,7 @@ typelib_DATA = Meta-$(api_version).typelib
 # We need to strip out the attribute that would point back to libmutter-introspect
 # so that libgirepository looks for symbols in the executable instead
 Meta-$(api_version).gir: $(G_IR_SCANNER) mutter $(libmutterinclude_HEADERS) $(mutter_SOURCES)
-	pwd=`pwd` ;					\
+	$(AM_V_GEN) pwd=`pwd` ;				\
         cd $(srcdir) &&					\
 	$(G_IR_SCANNER)					\
 		--namespace=Meta			\
@@ -206,8 +210,8 @@ Meta-$(api_version).gir: $(G_IR_SCANNER) mutter $(libmutterinclude_HEADERS) $(mu
 		--include=GObject-2.0			\
 		--include=Gdk-2.0			\
 		--include=Gtk-2.0			\
-		--include=Clutter-0.9			\
-		--pkg=clutter-0.9			\
+		--include=Clutter-1.0			\
+		--pkg=clutter-1.0			\
 		--pkg=gtk+-2.0				\
 		--include=xfixes-4.0			\
 		--program=$$pwd/mutter			\
@@ -217,11 +221,11 @@ Meta-$(api_version).gir: $(G_IR_SCANNER) mutter $(libmutterinclude_HEADERS) $(mu
 		-o $$pwd/$@
 
 Meta-$(api_version).typelib: $(G_IR_COMPILER) Meta-$(api_version).gir
-	LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}. $(G_IR_COMPILER) Meta-$(api_version).gir -o $@
+	$(AM_V_GEN) LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}. $(G_IR_COMPILER) Meta-$(api_version).gir -o $@
 endif
 
 EFENCE=
-mutter_LDADD=@MUTTER_LIBS@ libmutter-private.la $(EFENCE)
+mutter_LDADD=@MUTTER_LIBS@ $(EFENCE)
 mutter_LDFLAGS=-export-dynamic
 
 mutter_theme_viewer_LDADD= @MUTTER_LIBS@ libmutter-private.la
@@ -232,9 +236,9 @@ testasyncgetprop_SOURCES=core/async-getprop.h core/async-getprop.c core/testasyn
 
 noinst_PROGRAMS=testboxes testgradient testasyncgetprop
 
-testboxes_LDADD= @MUTTER_LIBS@ libmutter-private.la
-testgradient_LDADD= @MUTTER_LIBS@ libmutter-private.la
-testasyncgetprop_LDADD= @MUTTER_LIBS@ libmutter-private.la
+testboxes_LDADD= @MUTTER_LIBS@
+testgradient_LDADD= @MUTTER_LIBS@
+testasyncgetprop_LDADD= @MUTTER_LIBS@
 
 @INTLTOOL_DESKTOP_RULE@
 
@@ -304,7 +308,7 @@ CLEANFILES += $(MUTTER_STAMP_FILES)
 mutter-marshal.h: stamp-mutter-marshal.h
 	@true
 stamp-mutter-marshal.h: Makefile mutter-marshal.list
-	$(GLIB_GENMARSHAL) \
+	$(AM_V_GEN) $(GLIB_GENMARSHAL) \
 		--prefix=_mutter_marshal \
 		--header \
 	$(srcdir)/mutter-marshal.list > xgen-tmh && \
@@ -313,7 +317,7 @@ stamp-mutter-marshal.h: Makefile mutter-marshal.list
 	echo timestamp > $(@F)
 
 mutter-marshal.c: Makefile mutter-marshal.list
-	(echo "#include \"mutter-marshal.h\"" ; \
+	 $(AM_V_GEN) (echo "#include \"mutter-marshal.h\"" ; \
 	 $(GLIB_GENMARSHAL) \
 		--prefix=_mutter_marshal \
 		--body \
@@ -324,16 +328,16 @@ mutter-marshal.c: Makefile mutter-marshal.list
 mutter-enum-types.h: stamp-mutter-enum-types.h Makefile
 	@true
 stamp-mutter-enum-types.h: $(mutter_source_h) mutter-enum-types.h.in
-	( cd $(srcdir) && \
+	$(AM_V_GEN) ( cd $(srcdir) && \
 	  $(GLIB_MKENUMS) \
 	    --template $(srcdir)/mutter-enum-types.h.in \
 	  $(libmutterinclude_base_headers) ) >> xgen-teth && \
-	(cmp xgen-teth mutter-enum-types.h || cp xgen-teth mutter-enum-types.h) && \
+	(cmp -s xgen-teth mutter-enum-types.h || cp xgen-teth mutter-enum-types.h) && \
 	rm -f xgen-teth && \
 	echo timestamp > $(@F)
 
 mutter-enum-types.c: stamp-mutter-enum-types.h mutter-enum-types.c.in
-	( cd $(srcdir) && \
+	  $(AM_V_GEN) ( cd $(srcdir) && \
 	  $(GLIB_MKENUMS) \
 	    --template $(srcdir)/mutter-enum-types.c.in \
 	  $(libmutterinclude_base_headers) ) >> xgen-tetc && \

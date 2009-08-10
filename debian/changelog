@@ -1,3 +1,11 @@
+mutter (2.27.1git090806-0ubuntu1) karmic; urgency=low
+
+  * New upstream release from git repositoy, using now clutter 1.0,
+    needed for last GNOME shell.
+  * debian/control.in: build-dep on libclutter-1.0-dev
+
+ -- Didier Roche <didrocks@ubuntu.com>  Mon, 10 Aug 2009 19:00:42 +0200
+
 mutter (2.27.1-0ubuntu1) karmic; urgency=low
 
   * Initial release

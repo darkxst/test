@@ -42,6 +42,7 @@
 #include "group.h"
 #include "window-props.h"
 #include "constraints.h"
+#include "mutter-enum-types.h"
 
 #include <X11/Xatom.h>
 #include <string.h>
@@ -135,6 +136,7 @@ enum {
   PROP_MINI_ICON,
   PROP_DECORATED,
   PROP_FULLSCREEN,
+  PROP_WINDOW_TYPE
 };
 
 enum
@@ -196,6 +198,9 @@ meta_window_get_property(GObject         *object,
       break;
     case PROP_FULLSCREEN:
       g_value_set_boolean (value, win->fullscreen);
+      break;
+    case PROP_WINDOW_TYPE:
+      g_value_set_enum (value, win->type);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -265,6 +270,15 @@ meta_window_class_init (MetaWindowClass *klass)
                                                          "Whether windos is fullscreened",
                                                          FALSE,
                                                          G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_WINDOW_TYPE,
+                                   g_param_spec_enum ("window-type",
+                                                      "Window Type",
+                                                      "The type of the window",
+                                                      MUTTER_TYPE_WINDOW_TYPE,
+                                                      META_WINDOW_NORMAL,
+                                                      G_PARAM_READABLE));
 
   window_signals[WORKSPACE_CHANGED] =
     g_signal_new ("workspace-changed",
@@ -761,6 +775,16 @@ meta_window_new_with_attrs (MetaDisplay       *display,
   window->initial_timestamp = 0; /* not used */
 
   window->compositor_private = NULL;
+
+  if (window->override_redirect)
+    {
+      window->decorated = FALSE;
+      window->always_sticky = TRUE;
+      window->has_close_func = FALSE;
+      window->has_shade_func = FALSE;
+      window->has_move_func = FALSE;
+      window->has_resize_func = FALSE;
+    }
 
   meta_display_register_x_window (display, &window->xwindow, window);
 
@@ -1279,7 +1303,10 @@ meta_window_unmanage (MetaWindow  *window,
   g_assert (window->display->grab_window != window);
 
   if (window->display->focus_window == window)
-    window->display->focus_window = NULL;
+    {
+      window->display->focus_window = NULL;
+      g_object_notify (G_OBJECT (window->display), "focus-window");
+    }
 
   if (window->maximized_horizontally || window->maximized_vertically)
     unmaximize_window_before_freeing (window);
@@ -2015,13 +2042,22 @@ intervening_user_event_occurred (MetaWindow *window)
   /* To determine the "launch" time of an application,
    * startup-notification can set the TIMESTAMP and the
    * application (usually via its toolkit such as gtk or qt) can
-   * set the _NET_WM_USER_TIME.  If both are set, then it means
-   * the user has interacted with the application since it
-   * launched, and _NET_WM_USER_TIME is the value that should be
-   * used in the comparison.
+   * set the _NET_WM_USER_TIME.  If both are set, we need to be
+   * using the newer of the two values.
+   *
+   * See http://bugzilla.gnome.org/show_bug.cgi?id=573922
    */
-  compare = window->initial_timestamp_set ? window->initial_timestamp : 0;
-  compare = window->net_wm_user_time_set  ? window->net_wm_user_time  : compare;
+  compare = 0;
+  if (window->net_wm_user_time_set &&
+      window->initial_timestamp_set)
+    compare =
+      XSERVER_TIME_IS_BEFORE (window->net_wm_user_time,
+                              window->initial_timestamp) ?
+      window->initial_timestamp : window->net_wm_user_time;
+  else if (window->net_wm_user_time_set)
+    compare = window->net_wm_user_time;
+  else if (window->initial_timestamp_set)
+    compare = window->initial_timestamp;
 
   if ((focus_window != NULL) &&
       XSERVER_TIME_IS_BEFORE (compare, focus_window->net_wm_user_time))
@@ -2557,6 +2593,15 @@ meta_window_show (MetaWindow *window)
                   window->desc);
       invalidate_work_areas (window);
     }
+
+  /*
+   * Now that we have shown the window, we no longer want to consider the
+   * initial timestamp in any subsequent deliberations whether to focus this
+   * window or not, so clear the flag.
+   *
+   * See http://bugzilla.gnome.org/show_bug.cgi?id=573922
+   */
+  window->initial_timestamp_set = FALSE;
 }
 
 static void
@@ -5674,6 +5719,13 @@ meta_window_notify_focus (MetaWindow *window,
 
   if (event->type == FocusIn)
     {
+      if (window->override_redirect)
+        {
+          window->display->focus_window = NULL;
+          g_object_notify (G_OBJECT (window->display), "focus-window");
+          return FALSE;
+        }
+
       if (window != window->display->focus_window)
         {
           meta_topic (META_DEBUG_FOCUS,
@@ -5737,7 +5789,7 @@ meta_window_notify_focus (MetaWindow *window,
             meta_display_ungrab_focus_window_button (window->display, window);
 
           g_signal_emit (window, window_signals[FOCUS], 0);
-
+          g_object_notify (G_OBJECT (window->display), "focus-window");
         }
     }
   else if (event->type == FocusOut ||
@@ -5763,6 +5815,7 @@ meta_window_notify_focus (MetaWindow *window,
                       "* Focus --> NULL (was %s)\n", window->desc);
 
           window->display->focus_window = NULL;
+          g_object_notify (G_OBJECT (window->display), "focus-window");
           window->has_focus = FALSE;
           if (window->frame)
             meta_frame_queue_draw (window->frame);
@@ -6413,24 +6466,7 @@ recalc_window_type (MetaWindow *window)
 
   old_type = window->type;
 
-  if (window->override_redirect)
-    {
-      if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_DROPDOWN_MENU)
-        window->type = META_WINDOW_DROPDOWN_MENU;
-      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_POPUP_MENU)
-        window->type = META_WINDOW_POPUP_MENU;
-      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_TOOLTIP)
-        window->type = META_WINDOW_TOOLTIP;
-      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_NOTIFICATION)
-        window->type = META_WINDOW_NOTIFICATION;
-      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_COMBO)
-        window->type = META_WINDOW_COMBO;
-      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_DND)
-        window->type = META_WINDOW_DND;
-      else
-	window->type = META_WINDOW_OVERRIDE_OTHER;
-    }
-  else if (window->type_atom != None)
+  if (window->type_atom != None)
     {
       if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_DESKTOP)
         window->type = META_WINDOW_DESKTOP;
@@ -6448,9 +6484,42 @@ recalc_window_type (MetaWindow *window)
         window->type = META_WINDOW_DIALOG;
       else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_NORMAL)
         window->type = META_WINDOW_NORMAL;
+      /* The below are *typically* override-redirect windows, but the spec does
+       * not disallow using them for managed windows.
+       */
+      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_DROPDOWN_MENU)
+        window->type = META_WINDOW_DROPDOWN_MENU;
+      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_POPUP_MENU)
+        window->type = META_WINDOW_POPUP_MENU;
+      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_TOOLTIP)
+        window->type = META_WINDOW_TOOLTIP;
+      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_NOTIFICATION)
+        window->type = META_WINDOW_NOTIFICATION;
+      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_COMBO)
+        window->type = META_WINDOW_COMBO;
+      else if (window->type_atom  == window->display->atom__NET_WM_WINDOW_TYPE_DND)
+        window->type = META_WINDOW_DND;
       else
-        meta_bug ("Set a type atom for %s that wasn't handled in recalc_window_type\n",
-                  window->desc);
+        {
+          char *atom_name;
+
+          /*
+           * Fallback on a normal type, and print warning. Don't abort.
+           */
+          window->type = META_WINDOW_NORMAL;
+
+          meta_error_trap_push (window->display);
+          atom_name = XGetAtomName (window->display->xdisplay,
+                                    window->type_atom);
+          meta_error_trap_pop (window->display, TRUE);
+
+          meta_warning ("Unrecognized type atom [%s] set for %s \n",
+                        atom_name ? atom_name : "unknown",
+                        window->desc);
+
+          if (atom_name)
+            XFree (atom_name);
+        }
     }
   else if (window->xtransient_for != None)
     {
@@ -6465,12 +6534,46 @@ recalc_window_type (MetaWindow *window)
       window->wm_state_modal)
     window->type = META_WINDOW_MODAL_DIALOG;
 
+  /* We don't want to allow override-redirect windows to have decorated-window
+   * types since that's just confusing.
+   */
+  if (window->override_redirect)
+    {
+      switch (window->type)
+        {
+        /* Decorated types */
+        case META_WINDOW_NORMAL:
+        case META_WINDOW_DIALOG:
+        case META_WINDOW_MODAL_DIALOG:
+        case META_WINDOW_MENU:
+        case META_WINDOW_UTILITY:
+          window->type = META_WINDOW_OVERRIDE_OTHER;
+          break;
+        /* Undecorated types, normally not override-redirect */
+        case META_WINDOW_DESKTOP:
+        case META_WINDOW_DOCK:
+        case META_WINDOW_TOOLBAR:
+        case META_WINDOW_SPLASHSCREEN:
+        /* Undecorated types, normally override-redirect types */
+        case META_WINDOW_DROPDOWN_MENU:
+        case META_WINDOW_POPUP_MENU:
+        case META_WINDOW_TOOLTIP:
+        case META_WINDOW_NOTIFICATION:
+        case META_WINDOW_COMBO:
+        case META_WINDOW_DND:
+        /* To complete enum */
+        case META_WINDOW_OVERRIDE_OTHER:
+          break;
+        }
+    }
+
   meta_verbose ("Calculated type %u for %s, old type %u\n",
                 window->type, window->desc, old_type);
 
   if (old_type != window->type)
     {
       gboolean old_decorated = window->decorated;
+      GObject  *object = G_OBJECT (window);
 
       recalc_window_features (window);
 
@@ -6488,8 +6591,14 @@ recalc_window_type (MetaWindow *window)
 
       meta_window_grab_keys (window);
 
+      g_object_freeze_notify (object);
+
       if (old_decorated != window->decorated)
-        g_object_notify (G_OBJECT (window), "decorated");
+        g_object_notify (object, "decorated");
+
+      g_object_notify (object, "window-type");
+
+      g_object_thaw_notify (object);
     }
 }
 
@@ -8061,6 +8170,17 @@ find_ancestor_func (MetaWindow *window,
   return TRUE;
 }
 
+/**
+ * meta_window_is_ancestor_of_transient:
+ * @window: a #MetaWindow
+ * @transient: a #MetaWindow
+ *
+ * The function determines whether @window is an ancestor of @transient; it does
+ * so by traversing the @transient's ancestors until it either locates @window
+ * or reaches an ancestor that is not transient.
+ *
+ * Return Value: (transfer none): %TRUE if window is an ancestor of transient.
+ */
 gboolean
 meta_window_is_ancestor_of_transient (MetaWindow *window,
                                       MetaWindow *transient)
@@ -8636,3 +8756,40 @@ meta_window_get_transient_for (MetaWindow *window)
   else
     return NULL;
 }
+
+/**
+ * meta_window_get_pid:
+ * @window: a #MetaWindow
+ *
+ * Returns pid of the process that created this window, if known (obtained from
+ * the _NET_WM_PID property).
+ *
+ * Return value: (transfer none): the pid, or -1 if not known.
+ */
+int
+meta_window_get_pid (MetaWindow *window)
+{
+  g_return_val_if_fail (META_IS_WINDOW (window), -1);
+
+  return window->net_wm_pid;
+}
+
+/**
+ * meta_window_get_client_machine:
+ * @window: a #MetaWindow
+ *
+ * Returns name of the client machine from which this windows was created,
+ * if known (obtained from the WM_CLIENT_MACHINE property).
+ *
+ * Return value: (transfer none): the machine name, or NULL; the string is
+ * owned by the window manager and should not be freed or modified by the
+ * caller.
+ */
+const char *
+meta_window_get_client_machine (MetaWindow *window)
+{
+  g_return_val_if_fail (META_IS_WINDOW (window), NULL);
+
+  return window->wm_client_machine;
+}
+
