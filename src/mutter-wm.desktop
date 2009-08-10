@@ -2,6 +2,7 @@
 Type=Application
 Encoding=UTF-8
 Name=Mutter
+Name[nb]=Mutter
 Exec=mutter
 # name of loadable control center module
 X-GNOME-WMSettingsModule=metacity

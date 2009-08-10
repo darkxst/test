@@ -362,6 +362,15 @@ mutter_window_constructed (GObject *object)
 
       clutter_container_add_actor (CLUTTER_CONTAINER (self), priv->actor);
 
+      /*
+       * Since we are holding a pointer to this actor independently of the
+       * ClutterContainer internals, and provide a public API to access it,
+       * add a reference here, so that if someone is messing about with us
+       * via the container interface, we do not end up with a dangling pointer.
+       * We will release it in dispose().
+       */
+      g_object_ref (priv->actor);
+
       g_signal_connect (priv->window, "notify::decorated",
                         G_CALLBACK (mutter_meta_window_decorated_notify), self);
     }
@@ -415,7 +424,11 @@ mutter_window_dispose (GObject *object)
   info->windows = g_list_remove (info->windows, (gconstpointer) self);
   g_hash_table_remove (info->windows_by_xid, (gpointer) priv->xwindow);
 
-  g_free (priv->desc);
+  /*
+   * Release the extra reference we took on the actor.
+   */
+  g_object_unref (priv->actor);
+  priv->actor = NULL;
 
   G_OBJECT_CLASS (mutter_window_parent_class)->dispose (object);
 }
@@ -423,6 +436,11 @@ mutter_window_dispose (GObject *object)
 static void
 mutter_window_finalize (GObject *object)
 {
+  MutterWindow        *self = MUTTER_WINDOW (object);
+  MutterWindowPrivate *priv = self->priv;
+
+  g_free (priv->desc);
+
   G_OBJECT_CLASS (mutter_window_parent_class)->finalize (object);
 }
 
@@ -768,7 +786,7 @@ mutter_window_mark_for_repair (MutterWindow *self)
    *
    * The compositor paint function repairs all windows.
    */
-  clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
+  clutter_actor_queue_redraw (priv->actor);
 }
 
 static gboolean
@@ -833,7 +851,7 @@ mutter_window_after_effects (MutterWindow *self)
     mutter_window_detach (self);
 
   if (priv->needs_repair)
-    clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
+    clutter_actor_queue_redraw (priv->actor);
 }
 
 void
@@ -1512,8 +1530,6 @@ check_needs_repair (MutterWindow *self)
                     "pixmap-height", &pxm_height,
                     NULL);
 
-      clutter_actor_set_size (priv->actor, pxm_width, pxm_height);
-
       if (priv->shadow)
         clutter_actor_set_size (priv->shadow, pxm_width, pxm_height);
 
@@ -1654,7 +1670,7 @@ mutter_window_update_shape (MutterWindow   *self,
   priv->shaped = shaped;
   priv->needs_reshape = TRUE;
 
-  clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
+  clutter_actor_queue_redraw (priv->actor);
 }
 
 void
