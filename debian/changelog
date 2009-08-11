@@ -1,3 +1,9 @@
+mutter (2.27.2-0ubuntu1) karmic; urgency=low
+
+  * New upstream release
+
+ -- Christophe Sauthier <christophe.sauthier@objectif-libre.com>  Tue, 11 Aug 2009 12:46:44 +0200
+
 mutter (2.27.1git090806-0ubuntu1) karmic; urgency=low
 
   * New upstream release from git repositoy, using now clutter 1.0,
