@@ -1,8 +1,12 @@
 [Desktop Entry]
 Type=Application
-Encoding=UTF-8
 Name=Mutter
+Name[es]=Mutter
+Name[eu]=Mutter
+Name[gl]=Mutter
+Name[hu]=Mutter
 Name[nb]=Mutter
+Name[sv]=Mutter
 Exec=mutter
 NoDisplay=true
 # name of loadable control center module

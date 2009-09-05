@@ -150,6 +150,10 @@ GType meta_tab_show_type_get_type (void) G_GNUC_CONST;
 GType meta_atom_get_type (void) G_GNUC_CONST;
 #define MUTTER_TYPE_ATOM (meta_atom_get_type())
 
+/* enumerations from "include/mutter-plugin.h" */
+GType meta_modal_options_get_type (void) G_GNUC_CONST;
+#define MUTTER_TYPE_MODAL_OPTIONS (meta_modal_options_get_type())
+
 G_END_DECLS
 
 #endif /* !__MUTTER_ENUM_TYPES_H__ */

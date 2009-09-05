@@ -483,7 +483,7 @@ meta_display_open (void)
   the_display->leader_window = None;
   the_display->timestamp_pinging_window = None;
 
-  the_display->xinerama_cache_invalidated = TRUE;
+  the_display->monitor_cache_invalidated = TRUE;
 
   the_display->groups_by_leader = NULL;
 
@@ -722,6 +722,13 @@ meta_display_open (void)
                                     the_display->leader_window,
                                     the_display->atom__NET_WM_NAME,
                                     "Mutter");
+
+    /* The GNOME keybindings capplet should include both the Mutter and Metacity
+     * keybindings */
+    meta_prop_set_utf8_string_hint (the_display,
+                                    the_display->leader_window,
+                                    the_display->atom__GNOME_WM_KEYBINDINGS,
+                                    "Mutter,Metacity");
     
     meta_prop_set_utf8_string_hint (the_display,
                                     the_display->leader_window,
@@ -1007,6 +1014,7 @@ meta_display_close (MetaDisplay *display,
     meta_compositor_destroy (display->compositor);
   
   g_object_unref (display);
+  the_display = NULL;
 
   meta_quit (META_EXIT_SUCCESS);
 }
@@ -1198,6 +1206,7 @@ grab_op_is_mouse (MetaGrabOp op)
     case META_GRAB_OP_KEYBOARD_RESIZING_SW:
     case META_GRAB_OP_KEYBOARD_RESIZING_NW:
     case META_GRAB_OP_KEYBOARD_MOVING:
+    case META_GRAB_OP_COMPOSITOR:
       return TRUE;
 
     default:
@@ -1227,6 +1236,7 @@ grab_op_is_keyboard (MetaGrabOp op)
     case META_GRAB_OP_KEYBOARD_ESCAPING_DOCK:
     case META_GRAB_OP_KEYBOARD_ESCAPING_GROUP:
     case META_GRAB_OP_KEYBOARD_WORKSPACE_SWITCHING:
+    case META_GRAB_OP_COMPOSITOR:
       return TRUE;
 
     default:
@@ -1508,6 +1518,7 @@ event_callback (XEvent   *event,
   MetaDisplay *display;
   Window modified;
   gboolean frame_was_receiver;
+  gboolean bypass_compositor;
   gboolean filter_out_event;
 
   display = data;
@@ -1521,9 +1532,10 @@ event_callback (XEvent   *event,
   sn_display_process_event (display->sn_display, event);
 #endif
   
+  bypass_compositor = FALSE;
   filter_out_event = FALSE;
   display->current_time = event_get_time (display, event);
-  display->xinerama_cache_invalidated = TRUE;
+  display->monitor_cache_invalidated = TRUE;
   
   modified = event_get_modified_window (display, event);
   
@@ -1667,15 +1679,26 @@ event_callback (XEvent   *event,
     {
     case KeyPress:
     case KeyRelease:
-      meta_display_process_key_event (display, window, event);
+      if (display->grab_op == META_GRAB_OP_COMPOSITOR)
+        break;
+
+      /* For key events, it's important to enforce single-handling, or
+       * we can get into a confused state. So if a keybinding is
+       * handled (because it's one of our hot-keys, or because we are
+       * in a keyboard-grabbed mode like moving a window, we don't
+       * want to pass the key event to the compositor at all.
+       */
+      bypass_compositor = meta_display_process_key_event (display, window, event);
       break;
     case ButtonPress:
+      if (display->grab_op == META_GRAB_OP_COMPOSITOR)
+        break;
+
       if (event->xbutton.button == 4 || event->xbutton.button == 5)
-        {
-          /* Scrollwheel event, do nothing and deliver event to compositor below
-           */
-        }
-      else if ((window &&
+        /* Scrollwheel event, do nothing and deliver event to compositor below */
+        break;
+
+      if ((window &&
            grab_op_is_mouse (display->grab_op) &&
            display->grab_button != (int) event->xbutton.button &&
            display->grab_window == window) ||
@@ -1865,16 +1888,25 @@ event_callback (XEvent   *event,
         }
       break;
     case ButtonRelease:
+      if (display->grab_op == META_GRAB_OP_COMPOSITOR)
+        break;
+
       if (display->grab_window == window &&
           grab_op_is_mouse (display->grab_op))
         meta_window_handle_mouse_grab_op_event (window, event);
       break;
     case MotionNotify:
+      if (display->grab_op == META_GRAB_OP_COMPOSITOR)
+        break;
+
       if (display->grab_window == window &&
           grab_op_is_mouse (display->grab_op))
         meta_window_handle_mouse_grab_op_event (window, event);
       break;
     case EnterNotify:
+      if (display->grab_op == META_GRAB_OP_COMPOSITOR)
+        break;
+
       if (display->grab_window == window &&
           grab_op_is_mouse (display->grab_op))
         {
@@ -1967,6 +1999,9 @@ event_callback (XEvent   *event,
         }
       break;
     case LeaveNotify:
+      if (display->grab_op == META_GRAB_OP_COMPOSITOR)
+        break;
+
       if (display->grab_window == window &&
           grab_op_is_mouse (display->grab_op))
         meta_window_handle_mouse_grab_op_event (window, event);
@@ -2533,7 +2568,7 @@ event_callback (XEvent   *event,
       break;
     }
 
-  if (display->compositor)
+  if (display->compositor && !bypass_compositor)
     {
       if (meta_compositor_process_event (display->compositor,
                                          event,
@@ -3175,6 +3210,15 @@ meta_display_unregister_x_window (MetaDisplay *display,
   remove_pending_pings_for_window (display, xwindow);
 }
 
+/**
+ * meta_display_xwindow_is_a_no_focus_window:
+ * @display: A #MetaDisplay
+ * @xwindow: An X11 window
+ *
+ * Returns %TRUE iff window is one of mutter's internal "no focus" windows
+ * (there is one per screen) which will have the focus when there is no
+ * actual client window focused.
+ */
 gboolean
 meta_display_xwindow_is_a_no_focus_window (MetaDisplay *display,
                                            Window xwindow)
@@ -3686,6 +3730,21 @@ meta_display_end_grab_op (MetaDisplay *display,
       g_source_remove (display->grab_resize_timeout_id);
       display->grab_resize_timeout_id = 0;
     }
+}
+
+/**
+ * meta_display_get_grab_op:
+ * Gets the current grab operation, if any.
+ *
+ * Return value: the current grab operation, or %META_GRAB_OP_NONE if
+ * Mutter doesn't currently have a grab. %META_GRAB_OP_COMPOSITOR will
+ * be returned if a compositor-plugin modal operation is in effect
+ * (See mutter_begin_modal_for_plugin())
+ */
+MetaGrabOp
+meta_display_get_grab_op (MetaDisplay *display)
+{
+  return display->grab_op;
 }
 
 void
@@ -4529,7 +4588,7 @@ meta_display_get_tab_next (MetaDisplay   *display,
   else
     {
       skip = display->focus_window != NULL && 
-             IN_TAB_CHAIN (display->focus_window, type);
+             tab_list->data == display->focus_window;
       if (backward)
         ret = find_tab_backward (display, type, screen, workspace,
                                  tab_list, skip);
@@ -5059,9 +5118,9 @@ sanity_check_timestamps (MetaDisplay *display,
               meta_warning ("%s appears to be one of the offending windows "
                             "with a timestamp of %u.  Working around...\n",
                             window->desc, window->net_wm_user_time);
-              window->net_wm_user_time = timestamp;
+              meta_window_set_user_time (window, timestamp);
             }
-          
+
           tmp = tmp->next;
         }
 

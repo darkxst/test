@@ -475,11 +475,11 @@ regrab_key_bindings (MetaDisplay *display)
   g_slist_free (windows);
 }
 
-static MetaKeyBindingAction
-display_get_keybinding_action (MetaDisplay  *display,
-                               unsigned int  keysym,
-                               unsigned int  keycode,
-                               unsigned long mask)
+static MetaKeyBinding *
+display_get_keybinding (MetaDisplay  *display,
+                        unsigned int  keysym,
+                        unsigned int  keycode,
+                        unsigned long mask)
 {
   int i;
 
@@ -490,13 +490,29 @@ display_get_keybinding_action (MetaDisplay  *display,
           display->key_bindings[i].keycode == keycode &&
           display->key_bindings[i].mask == mask)
         {
-          return meta_prefs_get_keybinding_action (display->key_bindings[i].name);
+          return &display->key_bindings[i];
         }
       
       --i;
     }
 
-  return META_KEYBINDING_ACTION_NONE;
+  return NULL;
+}
+
+static MetaKeyBindingAction
+display_get_keybinding_action (MetaDisplay  *display,
+                               unsigned int  keysym,
+                               unsigned int  keycode,
+                               unsigned long mask)
+{
+  MetaKeyBinding *binding;
+
+  binding = display_get_keybinding (display, keysym, keycode, mask);
+
+  if (binding)
+    return meta_prefs_get_keybinding_action (binding->name);
+  else
+    return META_KEYBINDING_ACTION_NONE;
 }
 
 void
@@ -1197,6 +1213,45 @@ process_overlay_key (MetaDisplay *display,
   return TRUE;
 }
 
+static void
+invoke_handler (MetaDisplay    *display,
+                MetaScreen     *screen,
+                MetaKeyHandler *handler,
+                MetaWindow     *window,
+                XEvent         *event,
+                MetaKeyBinding *binding)
+
+{
+  if (handler->func)
+    (* handler->func) (display, screen,
+                       handler->flags & BINDING_PER_WINDOW ?
+                           window : NULL,
+                       event,
+                       binding,
+                       handler->user_data);
+  else
+    (* handler->default_func) (display, screen,
+                               handler->flags & BINDING_PER_WINDOW ?
+                                   window: NULL,
+                               event,
+                               binding,
+                               NULL);
+}
+
+static void
+invoke_handler_by_name (MetaDisplay    *display,
+                        MetaScreen     *screen,
+                        const char     *handler_name,
+                        MetaWindow     *window,
+                        XEvent         *event)
+{
+  MetaKeyHandler *handler;
+
+  handler = find_handler (key_handlers, handler_name);
+  if (handler)
+    invoke_handler (display, screen, handler, window, event, NULL);
+}
+
 /* now called from only one place, may be worth merging */
 static gboolean
 process_event (MetaKeyBinding       *bindings,
@@ -1253,20 +1308,7 @@ process_event (MetaKeyBinding       *bindings,
        */
       display->allow_terminal_deactivation = TRUE;
 
-      if (handler->func)
-        (* handler->func) (display, screen,
-                           bindings[i].handler->flags & BINDING_PER_WINDOW ?
-                           window: NULL,
-                           event,
-                           &bindings[i],
-                           handler->user_data);
-      else
-        (* handler->default_func) (display, screen,
-                           bindings[i].handler->flags & BINDING_PER_WINDOW ?
-                           window: NULL,
-                           event,
-                           &bindings[i],
-                           NULL);
+      invoke_handler (display, screen, handler, window, event, &bindings[i]);
 
       return TRUE;
     }
@@ -1281,13 +1323,16 @@ process_event (MetaKeyBinding       *bindings,
  * right. This cannot cause infinite recursion because we never call
  * ourselves when there wasn't a grab, and we always clear the grab
  * first; the invariant is enforced using an assertion. See #112560.
+ *
+ * The return value is whether we handled the key event.
+ *
  * FIXME: We need to prove there are no race conditions here.
  * FIXME: Does it correctly handle alt-Tab being followed by another
  * grabbing keypress without letting go of alt?
  * FIXME: An iterative solution would probably be simpler to understand
  * (and help us solve the other fixmes).
  */
-void
+gboolean
 meta_display_process_key_event (MetaDisplay *display,
                                 MetaWindow  *window,
                                 XEvent      *event)
@@ -1303,7 +1348,7 @@ meta_display_process_key_event (MetaDisplay *display,
                 all_bindings_disabled ? ReplayKeyboard : AsyncKeyboard,
                 event->xkey.time);
   if (all_bindings_disabled)
-    return;
+    return FALSE;
 
   /* if key event was on root window, we have a shortcut */
   screen = meta_display_screen_for_root (display, event->xkey.window);
@@ -1314,12 +1359,12 @@ meta_display_process_key_event (MetaDisplay *display,
                                               event->xany.window);
 
   if (screen == NULL)
-    return; /* event window is destroyed */
+    return FALSE; /* event window is destroyed */
   
   /* ignore key events on popup menus and such. */
   if (window == NULL &&
       meta_ui_window_is_widget (screen->ui, event->xany.window))
-    return;
+    return FALSE;
   
   /* window may be NULL */
   
@@ -1339,7 +1384,7 @@ meta_display_process_key_event (MetaDisplay *display,
   if (all_keys_grabbed)
     {
       if (display->grab_op == META_GRAB_OP_NONE)
-        return;
+        return TRUE;
       /* If we get here we have a global grab, because
         * we're in some special keyboard mode such as window move
         * mode.
@@ -1416,18 +1461,20 @@ meta_display_process_key_event (MetaDisplay *display,
                       "Ending grab op %u on key event sym %s\n",
                       display->grab_op, XKeysymToString (keysym));
           meta_display_end_grab_op (display, event->xkey.time);
-          return;
         }
-      }
+
+      return TRUE;
+    }
   
   handled = process_overlay_key (display, screen, event, keysym);
+  if (handled)
+    return TRUE;
   
   /* Do the normal keybindings */
-  if (!handled)
-    process_event (display->key_bindings,
-                   display->n_key_bindings,
-                   display, screen, window, event, keysym,
-                   !all_keys_grabbed && window);
+  return process_event (display->key_bindings,
+                        display->n_key_bindings,
+                        display, screen, window, event, keysym,
+                        !all_keys_grabbed && window);
 }
 
 static gboolean
@@ -1980,6 +2027,7 @@ process_tab_grab (MetaDisplay *display,
                   XEvent      *event,
                   KeySym       keysym)
 {
+  MetaKeyBinding *binding;
   MetaKeyBindingAction action;
   gboolean popup_not_showing;
   gboolean backward;
@@ -1989,79 +2037,78 @@ process_tab_grab (MetaDisplay *display,
   if (screen != display->grab_screen)
     return FALSE;
 
-  action = display_get_keybinding_action (display,
-                                          keysym,
-                                          event->xkey.keycode,
-                                          display->grab_mask);
+  binding = display_get_keybinding (display,
+                                    keysym,
+                                    event->xkey.keycode,
+                                    display->grab_mask);
+  if (binding)
+    action = meta_prefs_get_keybinding_action (binding->name);
+  else
+    action = META_KEYBINDING_ACTION_NONE;
 
   /*
-   * If there is no tab_pop up object, i.e., there is some custom handler
-   * implementing Alt+Tab & Co., we call this custom handler; we do not
-   * mess about with the grab, as that is up to the handler to deal with.
+   * There are currently two different ways of customizing Alt-Tab, you can either
+   * provide a replacement AltTabHandler object, or you can hook into the keybindings
+   * meta_keybindings_set_custom_handler() and call meta_display_begin_grab_op()
+   * yourself with one of the "tabbing" grab ops META_GRAB_OP_KEYBOARD_TABBING_NORMAL,
+   * etc. See meta_display_process_key_event() for the complete list. If screen->tab_handler
+   * is NULL, the latter mechanism is being used. We skip most of our normal
+   * processing and just make sure that the right custom handlers get called.
    */
   if (!screen->tab_handler)
     {
-      MetaKeyHandler *handler = NULL;
-      const gchar    *handler_name = NULL;
+      if (event->type == KeyRelease)
+        {
+          if (end_keyboard_grab (display, event->xkey.keycode))
+            {
+              invoke_handler_by_name (display, screen, "tab_popup_select", NULL, event);
+
+              /* We return FALSE to end the grab; if the handler ended the grab itself
+               * that will be a noop. If the handler didn't end the grab, then it's a
+               * safety measure to prevent a stuck grab.
+               */
+              return FALSE;
+            }
+
+          return TRUE;
+        }
 
       switch (action)
         {
         case META_KEYBINDING_ACTION_CYCLE_PANELS:
-          handler_name = "cycle_group";
-          break;
         case META_KEYBINDING_ACTION_CYCLE_WINDOWS:
-          handler_name = "cycle_windows";
-          break;
         case META_KEYBINDING_ACTION_CYCLE_PANELS_BACKWARD:
-          handler_name = "cycle_panels_backward";
-          break;
         case META_KEYBINDING_ACTION_CYCLE_WINDOWS_BACKWARD:
-          handler_name = "cycle_windows_backward";
-          break;
         case META_KEYBINDING_ACTION_SWITCH_PANELS:
-          handler_name = "switch_panels";
-          break;
         case META_KEYBINDING_ACTION_SWITCH_WINDOWS:
-          handler_name = "switch_windows";
-          break;
         case META_KEYBINDING_ACTION_SWITCH_PANELS_BACKWARD:
-          handler_name = "switch_panels_backward";
-          break;
         case META_KEYBINDING_ACTION_SWITCH_WINDOWS_BACKWARD:
-          handler_name = "switch_windows_backward";
-          break;
         case META_KEYBINDING_ACTION_CYCLE_GROUP:
-          handler_name = "cycle_group";
-          break;
         case META_KEYBINDING_ACTION_CYCLE_GROUP_BACKWARD:
-          handler_name = "cycle_group_backward";
-          break;
         case META_KEYBINDING_ACTION_SWITCH_GROUP:
-          handler_name = "switch_group";
-          break;
         case META_KEYBINDING_ACTION_SWITCH_GROUP_BACKWARD:
-          handler_name = "switch_group_backward";
+          /* These are the tab-popup bindings. If a custom Alt-Tab implementation
+           * is in effect, we expect it to want to handle all of these as a group
+           *
+           * If there are some of them that the custom implementation didn't
+           * handle, we treat them as "unbound" for the duration - running the
+           * normal handlers could get us into trouble.
+           */
+          if (binding->handler &&
+              binding->handler->func &&
+              binding->handler->func != binding->handler->default_func)
+            {
+              invoke_handler (display, screen, binding->handler, NULL, event, binding);
+              return TRUE;
+            }
           break;
         default:
-          /*
-           * This is the case when the Alt key is released; we preserve
-           * the grab, as it is up to the custom implementaiton to free it
-           * (a plugin can catch this in their xevent_filter function).
-           */
-          return TRUE;
+          break;
         }
 
-      /*
-       * We do not want to actually call the handler, we just want to ensure
-       * that if a custom handler is installed, we do not release the grab here.
-       * The handler will get called as normal in the process_event() function.
-       */
-      handler = find_handler (key_handlers, handler_name);
-
-      if (!handler || !handler->func || handler->func == handler->default_func)
-        return FALSE;
-
-      return TRUE;
+      /* Some unhandled key press */
+      invoke_handler_by_name (display, screen, "tab_popup_cancel", NULL, event);
+      return FALSE;
     }
 
   if (event->type == KeyRelease &&
@@ -2506,7 +2553,7 @@ handle_move_to_corner_backend (MetaDisplay    *display,
   int new_x, new_y;
   int frame_width, frame_height;
 
-  meta_window_get_work_area_all_xineramas (window, &work_area);
+  meta_window_get_work_area_all_monitors (window, &work_area);
   meta_window_get_outer_rect (window, &outer);
   meta_window_get_position (window, &orig_x, &orig_y);
 
@@ -2638,7 +2685,7 @@ handle_move_to_center  (MetaDisplay    *display,
   int orig_x, orig_y;
   int frame_width, frame_height;
 
-  meta_window_get_work_area_all_xineramas (window, &work_area);
+  meta_window_get_work_area_all_monitors (window, &work_area);
   meta_window_get_outer_rect (window, &outer);
   meta_window_get_position (window, &orig_x, &orig_y);
 
@@ -3043,6 +3090,27 @@ handle_cycle (MetaDisplay    *display,
                     backwards, FALSE);
 }
 
+static void
+handle_tab_popup_select (MetaDisplay    *display,
+                         MetaScreen     *screen,
+                         MetaWindow     *window,
+                         XEvent         *event,
+                         MetaKeyBinding *binding,
+                         gpointer        dummy)
+{
+  /* Stub for custom handlers; no default implementation */
+}
+
+static void
+handle_tab_popup_cancel (MetaDisplay    *display,
+                         MetaScreen     *screen,
+                         MetaWindow     *window,
+                         XEvent         *event,
+                         MetaKeyBinding *binding,
+                         gpointer        dummy)
+{
+  /* Stub for custom handlers; no default implementation */
+}
 
 static void
 handle_toggle_fullscreen  (MetaDisplay    *display,

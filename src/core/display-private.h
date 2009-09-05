@@ -217,8 +217,8 @@ struct _MetaDisplay
   MetaKeyCombo overlay_key_combo;
   gboolean overlay_key_only_pressed;
   
-  /* Xinerama cache */
-  unsigned int xinerama_cache_invalidated : 1;
+  /* Monitor cache */
+  unsigned int monitor_cache_invalidated : 1;
 
   /* Opening the display */
   unsigned int display_opening : 1;
@@ -348,9 +348,6 @@ void        meta_display_register_x_window   (MetaDisplay *display,
                                               MetaWindow  *window);
 void        meta_display_unregister_x_window (MetaDisplay *display,
                                               Window       xwindow);
-/* Return whether the xwindow is a no focus window for any of the screens */
-gboolean    meta_display_xwindow_is_a_no_focus_window (MetaDisplay *display,
-                                                       Window xwindow);
 
 GSList*     meta_display_list_windows        (MetaDisplay          *display,
                                               MetaListWindowsFlags  flags);

@@ -75,6 +75,9 @@ MetaScreen *meta_display_screen_for_root (MetaDisplay *display,
                                           Window       xroot);
 MetaWindow *meta_display_get_focus_window (MetaDisplay *display);
 
+gboolean  meta_display_xwindow_is_a_no_focus_window (MetaDisplay *display,
+                                                     Window xwindow);
+
 int meta_display_get_damage_event_base (MetaDisplay *display);
 int meta_display_get_shape_event_base (MetaDisplay *display);
 Atom meta_display_get_atom (MetaDisplay *display, MetaAtom meta_atom);
@@ -111,6 +114,10 @@ gboolean meta_display_begin_grab_op (MetaDisplay *display,
                                      int          root_y);
 void     meta_display_end_grab_op   (MetaDisplay *display,
                                      guint32      timestamp);
+
+MetaGrabOp meta_display_get_grab_op (MetaDisplay *display);
+
+
 /* meta_display_set_input_focus_window is like XSetInputFocus, except
  * that (a) it can't detect timestamps later than the current time,
  * since Mutter isn't part of the XServer, and thus gives erroneous

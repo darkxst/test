@@ -1,3 +1,6 @@
+# Flag build for parallelism; see https://savannah.gnu.org/patch/?6905
+.AUTOPARALLEL:
+
 lib_LTLIBRARIES = libmutter-private.la
 
 SUBDIRS=wm-tester tools compositor/plugins
@@ -164,6 +167,7 @@ libmutterinclude_base_headers =		\
 	include/compositor.h			\
 	include/compositor-mutter.h		\
 	include/types.h				\
+	include/errors.h			\
 	include/screen.h			\
 	include/display.h			\
 	include/group.h				\
@@ -327,7 +331,7 @@ mutter-marshal.c: Makefile mutter-marshal.list
 
 mutter-enum-types.h: stamp-mutter-enum-types.h Makefile
 	@true
-stamp-mutter-enum-types.h: $(mutter_source_h) mutter-enum-types.h.in
+stamp-mutter-enum-types.h: $(libmutterinclude_base_headers) mutter-enum-types.h.in
 	$(AM_V_GEN) ( cd $(srcdir) && \
 	  $(GLIB_MKENUMS) \
 	    --template $(srcdir)/mutter-enum-types.h.in \
