@@ -38,7 +38,7 @@ meta_edge_type_get_type (void)
     {
       static const GEnumValue values[] = {
         { META_EDGE_WINDOW, "META_EDGE_WINDOW", "window" },
-        { META_EDGE_XINERAMA, "META_EDGE_XINERAMA", "xinerama" },
+        { META_EDGE_MONITOR, "META_EDGE_MONITOR", "monitor" },
         { META_EDGE_SCREEN, "META_EDGE_SCREEN", "screen" },
         { 0, NULL, NULL }
       };
@@ -275,6 +275,7 @@ meta_grab_op_get_type (void)
         { META_GRAB_OP_CLICKING_UNABOVE, "META_GRAB_OP_CLICKING_UNABOVE", "clicking-unabove" },
         { META_GRAB_OP_CLICKING_STICK, "META_GRAB_OP_CLICKING_STICK", "clicking-stick" },
         { META_GRAB_OP_CLICKING_UNSTICK, "META_GRAB_OP_CLICKING_UNSTICK", "clicking-unstick" },
+        { META_GRAB_OP_COMPOSITOR, "META_GRAB_OP_COMPOSITOR", "compositor" },
         { 0, NULL, NULL }
       };
       GType g_enum_type_id;
@@ -1331,6 +1332,32 @@ meta_atom_get_type (void)
 
       g_enum_type_id =
         g_enum_register_static (g_intern_static_string ("MetaAtom"), values);
+
+      g_once_init_leave (&g_enum_type_id__volatile, g_enum_type_id);
+    }
+
+  return g_enum_type_id__volatile;
+}
+
+/* enumerations from "include/mutter-plugin.h" */
+#include "include/mutter-plugin.h"
+
+GType
+meta_modal_options_get_type (void)
+{
+  static volatile gsize g_enum_type_id__volatile = 0;
+
+  if (g_once_init_enter (&g_enum_type_id__volatile))
+    {
+      static const GFlagsValue values[] = {
+        { META_MODAL_POINTER_ALREADY_GRABBED, "META_MODAL_POINTER_ALREADY_GRABBED", "pointer-already-grabbed" },
+        { META_MODAL_KEYBOARD_ALREADY_GRABBED, "META_MODAL_KEYBOARD_ALREADY_GRABBED", "keyboard-already-grabbed" },
+        { 0, NULL, NULL }
+      };
+      GType g_enum_type_id;
+
+      g_enum_type_id =
+        g_flags_register_static (g_intern_static_string ("MetaModalOptions"), values);
 
       g_once_init_leave (&g_enum_type_id__volatile, g_enum_type_id);
     }

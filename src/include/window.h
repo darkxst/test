@@ -70,6 +70,8 @@ GType meta_window_get_type (void);
 MetaFrame *meta_window_get_frame (MetaWindow *window);
 gboolean meta_window_has_focus (MetaWindow *window);
 gboolean meta_window_is_shaded (MetaWindow *window);
+gboolean meta_window_is_override_redirect (MetaWindow *window);
+gboolean meta_window_is_skip_taskbar (MetaWindow *window);
 MetaRectangle *meta_window_get_rect (MetaWindow *window);
 void meta_window_get_outer_rect (const MetaWindow *window, MetaRectangle *rect);
 MetaScreen *meta_window_get_screen (MetaWindow *window);
@@ -102,6 +104,8 @@ MetaStackLayer meta_window_get_layer (MetaWindow *window);
 MetaWindow* meta_window_find_root_ancestor    (MetaWindow *window);
 gboolean meta_window_is_ancestor_of_transient (MetaWindow            *window,
                                                MetaWindow            *transient);
+gboolean meta_window_is_mapped (MetaWindow  *window);
+gboolean meta_window_toplevel_is_mapped (MetaWindow  *window);
 gboolean meta_window_get_icon_geometry (MetaWindow    *window,
                                         MetaRectangle *rect);
 void meta_window_maximize   (MetaWindow        *window,
@@ -114,6 +118,8 @@ const char *meta_window_get_title (MetaWindow *window);
 MetaWindow *meta_window_get_transient_for (MetaWindow *window);
 void        meta_window_delete             (MetaWindow  *window,
                                             guint32      timestamp);
+guint32     meta_window_get_user_time (MetaWindow *window);
 int         meta_window_get_pid (MetaWindow *window);
 const char *meta_window_get_client_machine (MetaWindow *window);
+gboolean    meta_window_is_modal (MetaWindow *window);
 #endif

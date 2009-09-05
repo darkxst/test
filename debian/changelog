@@ -1,3 +1,10 @@
+mutter (2.27.4-0ubuntu1) karmic; urgency=low
+
+  * New upstream release
+  * add debian/watch
+
+ -- Didier Roche <didrocks@ubuntu.com>  Sat, 05 Sep 2009 16:23:00 +0200
+
 mutter (2.27.2-0ubuntu1) karmic; urgency=low
 
   * New upstream release

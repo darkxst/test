@@ -2,9 +2,7 @@ AC_PREREQ(2.50)
 
 m4_define([mutter_major_version], [2])
 m4_define([mutter_minor_version], [27])
-# Fibonacci sequence for micro version numbering:
-# 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987
-m4_define([mutter_micro_version], [2])
+m4_define([mutter_micro_version], [4])
 
 m4_define([mutter_version],
           [mutter_major_version.mutter_minor_version.mutter_micro_version])
@@ -18,7 +16,7 @@ AC_CONFIG_SRCDIR(src/core/display.c)
 AC_CONFIG_HEADERS(config.h)
 
 AM_INIT_AUTOMAKE([dist-bzip2 no-dist-gzip])
-m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([no])],)
+m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])],)
 AM_MAINTAINER_MODE
 
 MUTTER_MAJOR_VERSION=mutter_major_version
