@@ -1,3 +1,6 @@
+# Flag build for parallelism; see https://savannah.gnu.org/patch/?6905
+.AUTOPARALLEL:
+
 lib_LTLIBRARIES = libmutter-private.la
 
 SUBDIRS=wm-tester tools compositor/plugins
@@ -13,10 +16,6 @@ mutter_built_sources = \
 mutter_SOURCES= 				\
 	core/async-getprop.c			\
 	core/async-getprop.h			\
-	core/alttabhandler.c			\
-	include/alttabhandler.h			\
-	core/alttabhandlerdefault.c		\
-	include/alttabhandlerdefault.h		\
 	core/bell.c				\
 	core/bell.h				\
 	core/boxes.c				\
@@ -150,7 +149,6 @@ libmutterincludedir = $(includedir)/mutter/mutter-private
 # Headers installed for plugins; introspected information will
 # be extracted into Mutter-<version>.gir
 libmutterinclude_base_headers =		\
-	include/alttabhandler.h			\
 	include/boxes.h				\
 	ui/gradient.h				\
 	include/main.h				\
@@ -328,7 +326,7 @@ mutter-marshal.c: Makefile mutter-marshal.list
 
 mutter-enum-types.h: stamp-mutter-enum-types.h Makefile
 	@true
-stamp-mutter-enum-types.h: $(mutter_source_h) mutter-enum-types.h.in
+stamp-mutter-enum-types.h: $(libmutterinclude_base_headers) mutter-enum-types.h.in
 	$(AM_V_GEN) ( cd $(srcdir) && \
 	  $(GLIB_MKENUMS) \
 	    --template $(srcdir)/mutter-enum-types.h.in \

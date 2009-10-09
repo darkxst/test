@@ -37,12 +37,11 @@
 #include "screen.h"
 #include <X11/Xutil.h>
 #include "stack-tracker.h"
-#include "alttabhandler.h"
 #include "ui.h"
 
-typedef struct _MetaXineramaScreenInfo MetaXineramaScreenInfo;
+typedef struct _MetaMonitorInfo MetaMonitorInfo;
 
-struct _MetaXineramaScreenInfo
+struct _MetaMonitorInfo
 {
   int number;
   MetaRectangle rect;
@@ -82,9 +81,8 @@ struct _MetaScreen
   Visual *default_xvisual;
   MetaRectangle rect;  /* Size of screen; rect.x & rect.y are always 0 */
   MetaUI *ui;
-  MetaAltTabHandler *tab_handler;
-  MetaTabPopup *ws_popup;
-  
+  MetaTabPopup *tab_popup, *ws_popup;
+
   MetaWorkspace *active_workspace;
 
   /* This window holds the focus when we don't want to focus
@@ -105,11 +103,11 @@ struct _MetaScreen
   Atom wm_sn_atom;
   guint32 wm_sn_timestamp;
   
-  MetaXineramaScreenInfo *xinerama_infos;
-  int n_xinerama_infos;
+  MetaMonitorInfo *monitor_infos;
+  int n_monitor_infos;
 
-  /* Cache the current Xinerama */
-  int last_xinerama_index;
+  /* Cache the current monitor */
+  int last_monitor_index;
 
 #ifdef HAVE_STARTUP_NOTIFICATION
   SnMonitorContext *sn_context;
@@ -119,7 +117,7 @@ struct _MetaScreen
 
   Window wm_cm_selection_window;
 
-  guint work_area_idle;
+  guint work_area_later;
 
   int rows_of_workspaces;
   int columns_of_workspaces;
@@ -147,7 +145,8 @@ struct _MetaScreenClass
 {
   GObjectClass parent_class;
 
-  void (*restacked) (MetaScreen *);
+  void (*restacked)         (MetaScreen *);
+  void (*workareas_changed) (MetaScreen *);
 };
 
 MetaScreen*   meta_screen_new                 (MetaDisplay                *display,
@@ -185,19 +184,19 @@ void          meta_screen_workspace_popup_destroy      (MetaScreen    *screen);
 MetaWindow*   meta_screen_get_mouse_window     (MetaScreen                 *screen,
                                                 MetaWindow                 *not_this_one);
 
-const MetaXineramaScreenInfo* meta_screen_get_current_xinerama    (MetaScreen    *screen);
-const MetaXineramaScreenInfo* meta_screen_get_xinerama_for_rect   (MetaScreen    *screen,
-                                                                   MetaRectangle *rect);
-const MetaXineramaScreenInfo* meta_screen_get_xinerama_for_window (MetaScreen    *screen,
-                                                                   MetaWindow    *window);
+const MetaMonitorInfo* meta_screen_get_current_monitor    (MetaScreen    *screen);
+const MetaMonitorInfo* meta_screen_get_monitor_for_rect   (MetaScreen    *screen,
+                                                           MetaRectangle *rect);
+const MetaMonitorInfo* meta_screen_get_monitor_for_window (MetaScreen    *screen,
+                                                           MetaWindow    *window);
 
 
-const MetaXineramaScreenInfo* meta_screen_get_xinerama_neighbor (MetaScreen *screen,
-                                                                 int         which_xinerama,
-                                                                 MetaScreenDirection dir);
-void          meta_screen_get_natural_xinerama_list (MetaScreen *screen,
-                                                     int**       xineramas_list,
-                                                     int*        n_xineramas);
+const MetaMonitorInfo* meta_screen_get_monitor_neighbor (MetaScreen *screen,
+                                                         int         which_monitor,
+                                                         MetaScreenDirection dir);
+void          meta_screen_get_natural_monitor_list (MetaScreen *screen,
+                                                    int**       monitors_list,
+                                                    int*        n_monitors);
 
 void          meta_screen_update_workspace_layout (MetaScreen             *screen);
 void          meta_screen_update_workspace_names  (MetaScreen             *screen);

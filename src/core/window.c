@@ -116,8 +116,9 @@ static void meta_window_apply_session_info (MetaWindow                  *window,
 static void unmaximize_window_before_freeing (MetaWindow        *window);
 static void unminimize_window_and_all_transient_parents (MetaWindow *window);
 
-/* Idle handlers for the three queues. The "data" parameter in each case
- * will be a GINT_TO_POINTER of the index into the queue arrays to use.
+/* Idle handlers for the three queues (run with meta_later_add()). The
+ * "data" parameter in each case will be a GINT_TO_POINTER of the
+ * index into the queue arrays to use.
  *
  * TODO: Possibly there is still some code duplication among these, which we
  * need to sort out at some point.
@@ -136,7 +137,8 @@ enum {
   PROP_MINI_ICON,
   PROP_DECORATED,
   PROP_FULLSCREEN,
-  PROP_WINDOW_TYPE
+  PROP_WINDOW_TYPE,
+  PROP_USER_TIME
 };
 
 enum
@@ -201,6 +203,9 @@ meta_window_get_property(GObject         *object,
       break;
     case PROP_WINDOW_TYPE:
       g_value_set_enum (value, win->type);
+      break;
+    case PROP_USER_TIME:
+      g_value_set_uint (value, win->net_wm_user_time);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -278,6 +283,16 @@ meta_window_class_init (MetaWindowClass *klass)
                                                       "The type of the window",
                                                       MUTTER_TYPE_WINDOW_TYPE,
                                                       META_WINDOW_NORMAL,
+                                                      G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_USER_TIME,
+                                   g_param_spec_uint ("user-time",
+                                                      "User time",
+                                                      "Timestamp of last user interaction",
+                                                      0,
+                                                      G_MAXUINT,
+                                                      0,
                                                       G_PARAM_READABLE));
 
   window_signals[WORKSPACE_CHANGED] =
@@ -675,7 +690,7 @@ meta_window_new_with_attrs (MetaDisplay       *display,
   window->fullscreen = FALSE;
   window->fullscreen_monitors[0] = -1;
   window->require_fully_onscreen = TRUE;
-  window->require_on_single_xinerama = TRUE;
+  window->require_on_single_monitor = TRUE;
   window->require_titlebar_visible = TRUE;
   window->on_all_workspaces = FALSE;
   window->shaded = FALSE;
@@ -788,6 +803,10 @@ meta_window_new_with_attrs (MetaDisplay       *display,
 
   meta_display_register_x_window (display, &window->xwindow, window);
 
+  /* Assign this #MetaWindow a sequence number which can be used
+   * for sorting.
+   */
+  window->stable_sequence = ++display->window_sequence_counter;
 
   /* assign the window to its group, or create a new group if needed
    */
@@ -1687,7 +1706,7 @@ meta_window_calc_showing (MetaWindow  *window)
   implement_showing (window, meta_window_should_be_showing (window));
 }
 
-static guint queue_idle[NUMBER_OF_QUEUES] = {0, 0, 0};
+static guint queue_later[NUMBER_OF_QUEUES] = {0, 0, 0};
 static GSList *queue_pending[NUMBER_OF_QUEUES] = {NULL, NULL, NULL};
 
 static int
@@ -1725,7 +1744,7 @@ idle_calc_showing (gpointer data)
   copy = g_slist_copy (queue_pending[queue_index]);
   g_slist_free (queue_pending[queue_index]);
   queue_pending[queue_index] = NULL;
-  queue_idle[queue_index] = 0;
+  queue_later[queue_index] = 0;
 
   destroying_windows_disallowed += 1;
 
@@ -1883,10 +1902,10 @@ meta_window_unqueue (MetaWindow *window, guint queuebits)
            * In that case, we should kill the function that deals with
            * the queue, because there's nothing left for it to do.
            */
-          if (queue_pending[queuenum] == NULL && queue_idle[queuenum] != 0)
+          if (queue_pending[queuenum] == NULL && queue_later[queuenum] != 0)
             {
-              g_source_remove (queue_idle[queuenum]);
-              queue_idle[queuenum] = 0;
+              meta_later_remove (queue_later[queuenum]);
+              queue_later[queuenum] = 0;
             }
         }
     }
@@ -1919,14 +1938,14 @@ meta_window_queue (MetaWindow *window, guint queuebits)
            * I seem to be turning into a Perl programmer.
            */
 
-          const gint window_queue_idle_priority[NUMBER_OF_QUEUES] =
+          const MetaLaterType window_queue_later_when[NUMBER_OF_QUEUES] =
             {
-              META_PRIORITY_BEFORE_REDRAW, /* CALC_SHOWING */
-              META_PRIORITY_RESIZE,        /* MOVE_RESIZE */
-              META_PRIORITY_BEFORE_REDRAW  /* UPDATE_ICON */
+              META_LATER_BEFORE_REDRAW, /* CALC_SHOWING */
+              META_LATER_RESIZE,        /* MOVE_RESIZE */
+              META_LATER_BEFORE_REDRAW  /* UPDATE_ICON */
             };
 
-          const GSourceFunc window_queue_idle_handler[NUMBER_OF_QUEUES] =
+          const GSourceFunc window_queue_later_handler[NUMBER_OF_QUEUES] =
             {
               idle_calc_showing,
               idle_move_resize,
@@ -1959,11 +1978,11 @@ meta_window_queue (MetaWindow *window, guint queuebits)
            * that. If not, we'll create one.
            */
 
-          if (queue_idle[queuenum] == 0)
-            queue_idle[queuenum] = g_idle_add_full
+          if (queue_later[queuenum] == 0)
+            queue_later[queuenum] = meta_later_add
               (
-                window_queue_idle_priority[queuenum],
-                window_queue_idle_handler[queuenum],
+                window_queue_later_when[queuenum],
+                window_queue_later_handler[queuenum],
                 GUINT_TO_POINTER(queuenum),
                 NULL
               );
@@ -2712,7 +2731,14 @@ meta_window_hide (MetaWindow *window)
       invalidate_work_areas (window);
     }
 
-  if (window->has_focus)
+  /* The check on expected_focus_window is a temporary workaround for
+   *  https://bugzilla.gnome.org/show_bug.cgi?id=597352
+   * We may have already switched away from this window but not yet
+   * gotten FocusIn/FocusOut events. A more complete comprehensive
+   * fix for these type of issues is described in the bug.
+   */
+  if (window->has_focus &&
+      window == window->display->expected_focus_window)
     {
       MetaWindow *not_this_one = NULL;
       MetaWorkspace *my_workspace = meta_window_get_workspace (window);
@@ -3241,10 +3267,10 @@ meta_window_update_fullscreen_monitors (MetaWindow    *window,
                                         unsigned long  left,
                                         unsigned long  right)
 {
-  if ((int)top < window->screen->n_xinerama_infos &&
-      (int)bottom < window->screen->n_xinerama_infos &&
-      (int)left < window->screen->n_xinerama_infos &&
-      (int)right < window->screen->n_xinerama_infos)
+  if ((int)top < window->screen->n_monitor_infos &&
+      (int)bottom < window->screen->n_monitor_infos &&
+      (int)left < window->screen->n_monitor_infos &&
+      (int)right < window->screen->n_monitor_infos)
     {
       window->fullscreen_monitors[0] = top;
       window->fullscreen_monitors[1] = bottom;
@@ -4182,7 +4208,7 @@ idle_move_resize (gpointer data)
   copy = g_slist_copy (queue_pending[queue_index]);
   g_slist_free (queue_pending[queue_index]);
   queue_pending[queue_index] = NULL;
-  queue_idle[queue_index] = 0;
+  queue_later[queue_index] = 0;
 
   destroying_windows_disallowed += 1;
 
@@ -6244,7 +6270,7 @@ idle_update_icon (gpointer data)
   copy = g_slist_copy (queue_pending[queue_index]);
   g_slist_free (queue_pending[queue_index]);
   queue_pending[queue_index] = NULL;
-  queue_idle[queue_index] = 0;
+  queue_later[queue_index] = 0;
 
   destroying_windows_disallowed += 1;
 
@@ -6788,7 +6814,7 @@ recalc_window_features (MetaWindow *window)
 
       /* don't allow fullscreen if we can't resize, unless the size
        * is entire screen size (kind of broken, because we
-       * actually fullscreen to xinerama head size not screen size)
+       * actually fullscreen to monitor size not screen size)
        */
       if (window->size_hints.min_width == window->screen->rect.width &&
           window->size_hints.min_height == window->screen->rect.height)
@@ -7449,22 +7475,22 @@ update_move (MetaWindow  *window,
 
       return;
     }
-  /* remaximize window on an other xinerama monitor if window has
-   * been shaken loose or it is still maximized (then move straight)
+  /* remaximize window on another monitor if window has been shaken
+   * loose or it is still maximized (then move straight)
    */
   else if (window->shaken_loose || META_WINDOW_MAXIMIZED (window))
     {
-      const MetaXineramaScreenInfo *wxinerama;
+      const MetaMonitorInfo *wmonitor;
       MetaRectangle work_area;
       int monitor;
 
-      wxinerama = meta_screen_get_xinerama_for_window (window->screen, window);
+      wmonitor = meta_screen_get_monitor_for_window (window->screen, window);
 
-      for (monitor = 0; monitor < window->screen->n_xinerama_infos; monitor++)
+      for (monitor = 0; monitor < window->screen->n_monitor_infos; monitor++)
         {
-          meta_window_get_work_area_for_xinerama (window, monitor, &work_area);
+          meta_window_get_work_area_for_monitor (window, monitor, &work_area);
 
-          /* check if cursor is near the top of a xinerama work area */
+          /* check if cursor is near the top of a monitor work area */
           if (x >= work_area.x &&
               x < (work_area.x + work_area.width) &&
               y >= work_area.y &&
@@ -7473,7 +7499,7 @@ update_move (MetaWindow  *window,
               /* move the saved rect if window will become maximized on an
                * other monitor so user isn't surprised on a later unmaximize
                */
-              if (wxinerama->number != monitor)
+              if (wmonitor->number != monitor)
                 {
                   window->saved_rect.x = work_area.x;
                   window->saved_rect.y = work_area.y;
@@ -7955,24 +7981,24 @@ meta_window_set_gravity (MetaWindow *window,
 }
 
 static void
-get_work_area_xinerama (MetaWindow    *window,
-                        MetaRectangle *area,
-                        int            which_xinerama)
+get_work_area_monitor (MetaWindow    *window,
+                       MetaRectangle *area,
+                       int            which_monitor)
 {
   GList *tmp;
 
-  g_assert (which_xinerama >= 0);
+  g_assert (which_monitor >= 0);
 
-  /* Initialize to the whole xinerama */
-  *area = window->screen->xinerama_infos[which_xinerama].rect;
+  /* Initialize to the whole monitor */
+  *area = window->screen->monitor_infos[which_monitor].rect;
 
   tmp = meta_window_get_workspaces (window);
   while (tmp != NULL)
     {
       MetaRectangle workspace_work_area;
-      meta_workspace_get_work_area_for_xinerama (tmp->data,
-                                                 which_xinerama,
-                                                 &workspace_work_area);
+      meta_workspace_get_work_area_for_monitor (tmp->data,
+                                                which_monitor,
+                                                &workspace_work_area);
       meta_rectangle_intersect (area,
                                 &workspace_work_area,
                                 area);
@@ -7980,39 +8006,39 @@ get_work_area_xinerama (MetaWindow    *window,
     }
 
   meta_topic (META_DEBUG_WORKAREA,
-              "Window %s xinerama %d has work area %d,%d %d x %d\n",
-              window->desc, which_xinerama,
+              "Window %s monitor %d has work area %d,%d %d x %d\n",
+              window->desc, which_monitor,
               area->x, area->y, area->width, area->height);
 }
 
 void
-meta_window_get_work_area_current_xinerama (MetaWindow    *window,
-					    MetaRectangle *area)
+meta_window_get_work_area_current_monitor (MetaWindow    *window,
+                                           MetaRectangle *area)
 {
-  const MetaXineramaScreenInfo *xinerama = NULL;
-  xinerama = meta_screen_get_xinerama_for_window (window->screen,
-						  window);
+  const MetaMonitorInfo *monitor = NULL;
+  monitor = meta_screen_get_monitor_for_window (window->screen,
+                                                window);
 
-  meta_window_get_work_area_for_xinerama (window,
-                                          xinerama->number,
-                                          area);
+  meta_window_get_work_area_for_monitor (window,
+                                         monitor->number,
+                                         area);
 }
 
 void
-meta_window_get_work_area_for_xinerama (MetaWindow    *window,
-					int            which_xinerama,
-					MetaRectangle *area)
+meta_window_get_work_area_for_monitor (MetaWindow    *window,
+                                       int            which_monitor,
+                                       MetaRectangle *area)
 {
-  g_return_if_fail (which_xinerama >= 0);
+  g_return_if_fail (which_monitor >= 0);
 
-  get_work_area_xinerama (window,
-                          area,
-                          which_xinerama);
+  get_work_area_monitor (window,
+                         area,
+                         which_monitor);
 }
 
 void
-meta_window_get_work_area_all_xineramas (MetaWindow    *window,
-                                         MetaRectangle *area)
+meta_window_get_work_area_all_monitors (MetaWindow    *window,
+                                        MetaRectangle *area)
 {
   GList *tmp;
 
@@ -8023,8 +8049,8 @@ meta_window_get_work_area_all_xineramas (MetaWindow    *window,
   while (tmp != NULL)
     {
       MetaRectangle workspace_work_area;
-      meta_workspace_get_work_area_all_xineramas (tmp->data,
-                                                  &workspace_work_area);
+      meta_workspace_get_work_area_all_monitors (tmp->data,
+                                                 &workspace_work_area);
       meta_rectangle_intersect (area,
                                 &workspace_work_area,
                                 area);
@@ -8456,6 +8482,26 @@ meta_window_stack_just_below (MetaWindow *window,
     }
 }
 
+/**
+ * meta_window_get_user_time:
+ *
+ * The user time represents a timestamp for the last time the user
+ * interacted with this window.  Note this property is only available
+ * for non-override-redirect windows.
+ *
+ * The property is set by Mutter initially upon window creation,
+ * and updated thereafter on input events (key and button presses) seen by Mutter,
+ * client updates to the _NET_WM_USER_TIME property (if later than the current time)
+ * and when focusing the window.
+ *
+ * Returns: The last time the user interacted with this window.
+ */
+guint32
+meta_window_get_user_time (MetaWindow *window)
+{
+  return window->net_wm_user_time;
+}
+
 void
 meta_window_set_user_time (MetaWindow *window,
                            guint32     timestamp)
@@ -8494,6 +8540,28 @@ meta_window_set_user_time (MetaWindow *window,
           __window_is_terminal (window))
         window->display->allow_terminal_deactivation = FALSE;
     }
+
+  g_object_notify (G_OBJECT (window), "user-time");
+}
+
+/**
+ * meta_window_get_stable_sequence:
+ * @window: A #MetaWindow
+ *
+ * The stable sequence number is a monotonicially increasing
+ * unique integer assigned to each #MetaWindow upon creation.
+ *
+ * This number can be useful for sorting windows in a stable
+ * fashion.
+ *
+ * Returns: Internal sequence number for this window
+ */
+guint32
+meta_window_get_stable_sequence (MetaWindow *window)
+{
+  g_return_val_if_fail (META_IS_WINDOW (window), 0);
+
+  return window->stable_sequence;
 }
 
 /* Sets the demands_attention hint on a window, but only
@@ -8797,6 +8865,25 @@ meta_window_get_transient_for (MetaWindow *window)
                                          window->xtransient_for);
   else
     return NULL;
+}
+
+/**
+ * meta_window_get_transient_for_as_xid:
+ * @window: a #MetaWindow
+ *
+ * Returns the XID of the window that is pointed to by the
+ * WM_TRANSIENT_FOR hint on this window (see XGetTransientForHint()
+ * or XSetTransientForHint()). Metacity keeps transient windows above their
+ * parents. A typical usage of this hint is for a dialog that wants to stay
+ * above its associated window.
+ *
+ * Return value: (transfer none): the window this window is transient for, or
+ * None if the WM_TRANSIENT_FOR hint is unset.
+ */
+Window
+meta_window_get_transient_for_as_xid (MetaWindow *window)
+{
+  return window->xtransient_for;
 }
 
 /**

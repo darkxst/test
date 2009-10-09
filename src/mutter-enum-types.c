@@ -38,7 +38,7 @@ meta_edge_type_get_type (void)
     {
       static const GEnumValue values[] = {
         { META_EDGE_WINDOW, "META_EDGE_WINDOW", "window" },
-        { META_EDGE_XINERAMA, "META_EDGE_XINERAMA", "xinerama" },
+        { META_EDGE_MONITOR, "META_EDGE_MONITOR", "monitor" },
         { META_EDGE_SCREEN, "META_EDGE_SCREEN", "screen" },
         { 0, NULL, NULL }
       };
@@ -146,6 +146,29 @@ meta_debug_topic_get_type (void)
 
       g_enum_type_id =
         g_flags_register_static (g_intern_static_string ("MetaDebugTopic"), values);
+
+      g_once_init_leave (&g_enum_type_id__volatile, g_enum_type_id);
+    }
+
+  return g_enum_type_id__volatile;
+}
+GType
+meta_later_type_get_type (void)
+{
+  static volatile gsize g_enum_type_id__volatile = 0;
+
+  if (g_once_init_enter (&g_enum_type_id__volatile))
+    {
+      static const GEnumValue values[] = {
+        { META_LATER_RESIZE, "META_LATER_RESIZE", "resize" },
+        { META_LATER_BEFORE_REDRAW, "META_LATER_BEFORE_REDRAW", "before-redraw" },
+        { META_LATER_IDLE, "META_LATER_IDLE", "idle" },
+        { 0, NULL, NULL }
+      };
+      GType g_enum_type_id;
+
+      g_enum_type_id =
+        g_enum_register_static (g_intern_static_string ("MetaLaterType"), values);
 
       g_once_init_leave (&g_enum_type_id__volatile, g_enum_type_id);
     }
