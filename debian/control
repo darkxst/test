@@ -8,7 +8,7 @@ Section: x11
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 XSBC-Original-Maintainer: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>
-Uploaders: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>, Gustavo Noronha Silva <kov@debian.org>, Josselin Mouette <joss@debian.org>
+Uploaders: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>, Gustavo Noronha Silva <kov@debian.org>
 Build-Depends: cdbs (>= 0.4.41),
                debhelper (>= 5),
                quilt,
@@ -56,6 +56,7 @@ Recommends: gnome-session | x-session-manager
 Suggests: gnome-control-center (>= 1:2.5.4),
           gnome-themes,
           xdg-user-dirs
+Replaces: libmutter0 (<= 2.28.0-0ubuntu1), mutter-common (<= 2.28.0-0ubuntu1)
 Description: lightweight GTK+ window manager
  Mutter is a small window manager, using GTK+ and Clutter to do
  everything.
@@ -127,8 +128,8 @@ Architecture: any
 Depends: ${gir:Depends},
          ${shlib:Depends},
          ${misc:Depends}
-Conflicts: libmutter-private0 (<= 2.28.0-1)
-Replaces: libmutter-private0 (<= 2.28.0-1)
+Conflicts: libmutter-private0 (<= 2.28.0-1), libmutter0 (<= 2.28.0-0ubuntu1)
+Replaces: libmutter-private0 (<= 2.28.0-1), libmutter0 (<= 2.28.0-0ubuntu1)
 Description: GObject introspection data for Mutter
  Mutter is a small window manager, using GTK+ and Clutter to do
  everything.
