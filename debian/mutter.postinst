@@ -14,4 +14,3 @@ if [ "$action" = configure ]; then
 fi
 
 #DEBHELPER#
-

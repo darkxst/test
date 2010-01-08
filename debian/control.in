@@ -1,56 +1,84 @@
 Source: mutter
 Section: x11
-Priority: extra
+Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>
 Uploaders: @GNOME_TEAM@
-Build-Depends: cdbs,
-    debhelper (>= 7),
-    libglib2.0-dev (>= 2.6.0),
-    libgtk2.0-dev (>= 2.10.0),
-    libclutter-1.0-dev,
-    libgirepository1.0-dev (>= 0.6.3),
-    gobject-introspection (>= 0.6.3-1ubuntu2),
-    gobject-introspection-glib-2.0 (>= 0.6.3-1ubuntu2),
-    gobject-introspection-freedesktop (>= 0.6.3-1ubuntu2),
-    gobject-introspection-repository (>= 0.6.4~git20090630-0ubuntu1),
-    gettext,
-    libpango1.0-dev (>= 1.2.0),
-    libgconf2-dev (>= 1.2.0),
-    libstartup-notification0-dev (>= 0.7),
-    libxcomposite-dev (>= 1:0.2),
-    libxfixes-dev,
-    libxrender-dev,
-    libxdamage-dev,
-    libxcursor-dev,
-    libxinerama-dev,
-    x11proto-xext-dev,
-    libx11-dev,
-    libxrandr-dev,
-    libsm-dev,
-    zenity,
-    gnome-doc-utils (>= 0.8.0),
-    gnome-pkg-tools
-Standards-Version: 3.8.1
-Homepage: http://live.gnome.org/GnomeShell
+Build-Depends: cdbs (>= 0.4.41),
+               debhelper (>= 5),
+               quilt,
+               intltool (>= 0.34.90),
+               gobject-introspection (>= 0.6.5-3),
+               gir1.0-clutter-1.0,
+               gir1.0-glib-2.0,
+               gir1.0-freedesktop,
+               gir-repository-dev,
+               libgirepository1.0-dev (>= 0.6.5-3),
+               libclutter-1.0-dev (>= 1.0.0),
+               libgtk2.0-dev (>= 2.10.0),
+               libpango1.0-dev (>= 1.2.0),
+               libgconf2-dev (>= 2.6.1-2),
+               libglib2.0-dev (>= 2.6.0),
+               libstartup-notification0-dev (>= 0.7),
+               libxcomposite-dev (>= 1:0.2),
+               libxfixes-dev,
+               libxrender-dev,
+               libxdamage-dev,
+               libxcursor-dev,
+               libxt-dev,
+               libx11-dev,
+               libxinerama-dev,
+               libxext-dev,
+               libxrandr-dev,
+               libsm-dev,
+               libice-dev,
+               zenity,
+               gnome-doc-utils (>= 0.8),
+               gnome-pkg-tools (>= 0.10),
+               dpkg-dev (>= 1.13.19)
+Standards-Version: 3.8.3
 
 Package: mutter
+Section: x11
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: A Window Manager with Clutter-based compositing
- Mutter is GTK2 base windows manager. It is a branch of Metacity,
- adding Clutter-based compositing.
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         mutter-common (>= ${gnome:Version}),
+         mutter-common (<< ${gnome:NextVersion}),
+         zenity
+Provides: x-window-manager
+Recommends: gnome-session | x-session-manager
+Suggests: gnome-control-center (>= 1:2.5.4),
+          gnome-themes,
+          xdg-user-dirs
+Description: lightweight GTK+ window manager
+ Mutter is a small window manager, using GTK+ and Clutter to do
+ everything.
+ .
+ Mutter is the clutter-based evolution of Metacity, which, as the
+ author says, is a "Boring window manager for the adult in you. Many
+ window managers are like Marshmallow Froot Loops; Metacity is like
+ Cheerios."
  .
  This package contains the core binaries.
 
-Package: libmutter0
+Package: libmutter-private0
 Section: libs
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
-         mutter-common (= ${source:Version})
-Description: A Window Manager with Clutter-based compositing
- Mutter is GTK2 base windows manager. It is a branch of Metacity,
- adding Clutter-based compositing.
+         mutter-common (>= ${gnome:Version}),
+         mutter-common (<< ${gnome:NextVersion})
+Conflicts: libmutter0
+Replaces: libmutter0
+Description: library for the Mutter window manager
+ Mutter is a small window manager, using GTK+ and Clutter to do
+ everything.
+ .
+ Mutter is the clutter-based evolution of Metacity, which, as the
+ author says, is a "Boring window manager for the adult in you. Many
+ window managers are like Marshmallow Froot Loops; Metacity is like
+ Cheerios."
  .
  This package contains the shared library.
 
@@ -58,9 +86,15 @@ Package: mutter-common
 Section: misc
 Architecture: all
 Depends: ${misc:Depends}
-Description: A Window Manager with Clutter-based compositing
- Mutter is GTK2 base windows manager. It is a branch of Metacity,
- adding Clutter-based compositing.
+Replaces: mutter (<< 1:2.16.3)
+Description: shared files for the Mutter window manager
+ Mutter is a small window manager, using GTK+ and Clutter to do
+ everything.
+ .
+ Mutter is the clutter-based evolution of Metacity, which, as the
+ author says, is a "Boring window manager for the adult in you. Many
+ window managers are like Marshmallow Froot Loops; Metacity is like
+ Cheerios."
  .
  This package contains the shared files.
 
@@ -68,11 +102,36 @@ Package: libmutter-dev
 Section: libdevel
 Architecture: any
 Depends: ${misc:Depends},
-         libmutter0 (= ${binary:Version}),
-         libgtk2.0-dev (>= 2.10.0),
-         libclutter-1.0-dev
-Description: A Window Manager with Clutter-based compositing
- Mutter is GTK2 base windows manager. It is a branch of Metacity,
- adding Clutter-based compositing.
+         libmutter-private0 (= ${binary:Version}),
+         libclutter-1.0-dev (>= 1.0.0),
+         libgtk2.0-dev (>= 2.10.0-1)
+Description: Development files for the Mutter window manager
+ Mutter is a small window manager, using GTK+ and Clutter to do
+ everything.
+ .
+ Mutter is the clutter-based evolution of Metacity, which, as the
+ author says, is a "Boring window manager for the adult in you. Many
+ window managers are like Marshmallow Froot Loops; Metacity is like
+ Cheerios."
  .
  This package contains the development files.
+
+Package: gir1.0-mutter-2.28
+Section: libs
+Architecture: any
+Depends: ${gir:Depends},
+         ${shlib:Depends},
+         ${misc:Depends}
+Conflicts: libmutter-private0 (<= 2.28.0-1)
+Replaces: libmutter-private0 (<= 2.28.0-1)
+Description: GObject introspection data for Mutter
+ Mutter is a small window manager, using GTK+ and Clutter to do
+ everything.
+ .
+ Mutter is the clutter-based evolution of Metacity, which, as the
+ author says, is a "Boring window manager for the adult in you. Many
+ window managers are like Marshmallow Froot Loops; Metacity is like
+ Cheerios."
+ .
+ This package contains the GObject introspection data which may be
+ used to generate dynamic bindings.
