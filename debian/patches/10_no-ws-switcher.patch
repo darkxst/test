@@ -1,0 +1,21 @@
+Description: Don't show the ws switcher if we only have one
+Origin: Ubuntu
+Bug: https://bugzilla.gnome.org/show_bug.cgi?id=606966
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/mutter/+bug/506944
+Author: Didier Roche <didrocks@ubuntu.com>
+
+Index: mutter/src/core/keybindings.c
+===================================================================
+--- mutter.orig/src/core/keybindings.c	2010-01-14 14:51:54.563213610 +0100
++++ mutter/src/core/keybindings.c	2010-01-14 15:14:45.415187758 +0100
+@@ -3407,6 +3407,10 @@
+ 
+   g_assert (motion < 0); 
+ 
++  /* Don't show the ws switcher if we get just one ws */
++  if (meta_screen_get_n_workspaces(screen) == 1)
++    return;
++
+   meta_topic (META_DEBUG_KEYBINDINGS,
+               "Starting tab between workspaces, showing popup\n");
+ 
