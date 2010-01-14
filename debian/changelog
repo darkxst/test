@@ -1,3 +1,10 @@
+mutter (2.28.1~git20091208-1ubuntu3) UNRELEASED; urgency=low
+
+  * add debian/patches/10_no-ws-switcher.patch:
+    Don't show ws selector when you only have one ws (LP: #506944)
+
+ -- Didier Roche <didrocks@ubuntu.com>  Thu, 14 Jan 2010 16:16:34 +0100
+
 mutter (2.28.1~git20091208-1ubuntu2) lucid; urgency=low
 
   * debian/control{,.in}: Add missing Replaces/Conflicts
