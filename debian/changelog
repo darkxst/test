@@ -1,3 +1,11 @@
+mutter (2.28.1~git20091208-1ubuntu4) lucid; urgency=low
+
+  * debian/control: Add Vcs-* headers, imported into bzr now.
+  * Add debian/patches/80_no_session_delay.patch: Start mutter together with
+    all other components, to avoid a bottleneck.
+
+ -- Martin Pitt <martin.pitt@ubuntu.com>  Tue, 26 Jan 2010 16:20:31 +0100
+
 mutter (2.28.1~git20091208-1ubuntu3) lucid; urgency=low
 
   * add debian/patches/10_no-ws-switcher.patch:
