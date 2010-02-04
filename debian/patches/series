@@ -2,4 +2,5 @@
 10_no-ws-switcher.patch
 80_no_session_delay.patch
 90_autotools.patch
+91_add_window_groups.patch
 99_ltmain_as-needed.patch

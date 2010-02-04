@@ -1,3 +1,13 @@
+mutter (2.28.1~git20091208-1ubuntu5) lucid; urgency=low
+
+  * debian/control.in:
+    - add Vcs-Bzr into debian/control.in
+  * add 91_add_window_groups.patch
+    - Adds support for a above, normal and below window groups, for more 
+      control by plugins
+
+ -- Didier Roche <didrocks@ubuntu.com>  Thu, 04 Feb 2010 20:32:21 -0800
+
 mutter (2.28.1~git20091208-1ubuntu4) lucid; urgency=low
 
   * debian/control: Add Vcs-* headers, imported into bzr now.
