@@ -1,3 +1,11 @@
+mutter (2.28.1~git20091208-1ubuntu6) lucid; urgency=low
+
+  * add debian/patches/11_hide_tooltip_on_decorator.patch: (LP: #519856)
+    add a gconf key (/desktop/gnome/interface/hide_decorator_tooltip)
+    to disable tooltip in decorator bar. If key not present, show the tooltip.
+
+ -- Didier Roche <didrocks@ubuntu.com>  Wed, 10 Feb 2010 18:08:45 +0100
+
 mutter (2.28.1~git20091208-1ubuntu5) lucid; urgency=low
 
   * debian/control.in:

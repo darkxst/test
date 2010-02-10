@@ -1,5 +1,6 @@
 01_Wcast-align.patch
 10_no-ws-switcher.patch
+11_hide_tooltip_on_decorator.patch
 80_no_session_delay.patch
 90_autotools.patch
 91_add_window_groups.patch
