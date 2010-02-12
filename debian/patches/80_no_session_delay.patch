@@ -1,4 +1,4 @@
-Description: Start mutter together with all other components, to avoid a bottleneck
+Description: Start mutter as early as possible, since with plugins (such as gnome-shell) it will take the longest time to start up; Let the scheduler deal with squeezing the other processes into mutter's idle periods.
 Author: Martin Pitt <martin.pitt@ubuntu.com>
 
 Index: mutter-2.28.1~git20091208/src/mutter-wm.desktop
@@ -10,7 +10,7 @@ Index: mutter-2.28.1~git20091208/src/mutter-wm.desktop
  X-GNOME-Bugzilla-Product=mutter
  X-GNOME-Bugzilla-Component=general
 -X-GNOME-Autostart-Phase=WindowManager
-+#X-GNOME-Autostart-Phase=WindowManager
++X-GNOME-Autostart-Phase=Initialization
  X-GNOME-Provides=windowmanager
  X-GNOME-Autostart-Notify=true
  
@@ -23,7 +23,7 @@ Index: mutter-2.28.1~git20091208/src/mutter-wm.desktop.in
  X-GNOME-Bugzilla-Product=mutter
  X-GNOME-Bugzilla-Component=general
 -X-GNOME-Autostart-Phase=WindowManager
-+#X-GNOME-Autostart-Phase=WindowManager
++X-GNOME-Autostart-Phase=Initialization
  X-GNOME-Provides=windowmanager
  X-GNOME-Autostart-Notify=true
  
@@ -36,7 +36,7 @@ Index: mutter-2.28.1~git20091208/src/mutter.desktop
  X-GNOME-Bugzilla-Product=mutter
  X-GNOME-Bugzilla-Component=general
 -X-GNOME-Autostart-Phase=WindowManager
-+#X-GNOME-Autostart-Phase=WindowManager
++X-GNOME-Autostart-Phase=Initialization
  X-GNOME-Provides=windowmanager
  X-GNOME-Autostart-Notify=true
 Index: mutter-2.28.1~git20091208/src/mutter.desktop.in
@@ -48,6 +48,6 @@ Index: mutter-2.28.1~git20091208/src/mutter.desktop.in
  X-GNOME-Bugzilla-Product=mutter
  X-GNOME-Bugzilla-Component=general
 -X-GNOME-Autostart-Phase=WindowManager
-+#X-GNOME-Autostart-Phase=WindowManager
++X-GNOME-Autostart-Phase=Initialization
  X-GNOME-Provides=windowmanager
  X-GNOME-Autostart-Notify=true
