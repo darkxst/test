@@ -264,6 +264,13 @@ set_wm_check_hint (MetaScreen *screen)
   return Success;
 }
 
+static void
+unset_wm_check_hint (MetaScreen *screen)
+{
+  XDeleteProperty (screen->display->xdisplay, screen->xroot, 
+                   screen->display->atom__NET_SUPPORTING_WM_CHECK);
+}
+
 static int
 set_supported_hint (MetaScreen *screen)
 {
@@ -850,6 +857,8 @@ meta_screen_free (MetaScreen *screen,
     meta_warning (_("Could not release screen %d on display \"%s\"\n"),
                   screen->number, screen->display->name);
 
+  unset_wm_check_hint (screen);
+
   XDestroyWindow (screen->display->xdisplay,
                   screen->wm_sn_selection_window);
   
@@ -1257,7 +1266,8 @@ meta_screen_remove_workspace (MetaScreen *screen, MetaWorkspace *workspace,
   GList         *l;
   MetaWorkspace *neighbour = NULL;
   GList         *next = NULL;
-  int index;
+  int            index;
+  int            new_num;
 
   l = screen->workspaces;
   while (l)
@@ -1299,7 +1309,10 @@ meta_screen_remove_workspace (MetaScreen *screen, MetaWorkspace *workspace,
   /* This also removes the workspace from the screens list */
   meta_workspace_remove (workspace);
 
-  set_number_of_spaces_hint (screen, g_list_length (screen->workspaces));
+  new_num = g_list_length (screen->workspaces);
+
+  set_number_of_spaces_hint (screen, new_num);
+  meta_prefs_set_num_workspaces (new_num);
 
   l = next;
   while (l)
@@ -1335,6 +1348,7 @@ meta_screen_append_new_workspace (MetaScreen *screen, gboolean activate,
                                   guint32 timestamp)
 {
   MetaWorkspace *w;
+  int new_num;
 
   /* This also adds the workspace to the screen list */
   w = meta_workspace_new (screen);
@@ -1345,7 +1359,10 @@ meta_screen_append_new_workspace (MetaScreen *screen, gboolean activate,
   if (activate)
     meta_workspace_activate (w, timestamp);
 
-  set_number_of_spaces_hint (screen, g_list_length (screen->workspaces));
+  new_num = g_list_length (screen->workspaces);
+
+  set_number_of_spaces_hint (screen, new_num);
+  meta_prefs_set_num_workspaces (new_num);
 
   meta_screen_queue_workarea_recalc (screen);
 
@@ -1371,6 +1388,9 @@ update_num_workspaces (MetaScreen *screen,
   new_num = meta_prefs_get_num_workspaces ();
 
   g_assert (new_num > 0);
+
+  if (g_list_length (screen->workspaces) == (guint) new_num)
+    return;
 
   last_remaining = NULL;
   extras = NULL;
@@ -3136,11 +3156,14 @@ meta_screen_set_cm_selection (MetaScreen *screen)
   char selection[32];
   Atom a;
 
+  screen->wm_cm_timestamp = meta_display_get_current_time_roundtrip (
+                                                               screen->display);
+
   g_snprintf (selection, sizeof(selection), "_NET_WM_CM_S%d", screen->number);
   meta_verbose ("Setting selection: %s\n", selection);
   a = XInternAtom (screen->display->xdisplay, selection, FALSE);
   XSetSelectionOwner (screen->display->xdisplay, a, 
-                      screen->wm_cm_selection_window, CurrentTime);
+                      screen->wm_cm_selection_window, screen->wm_cm_timestamp);
 }
 
 void
@@ -3151,7 +3174,8 @@ meta_screen_unset_cm_selection (MetaScreen *screen)
 
   g_snprintf (selection, sizeof(selection), "_NET_WM_CM_S%d", screen->number);
   a = XInternAtom (screen->display->xdisplay, selection, FALSE);
-  XSetSelectionOwner (screen->display->xdisplay, a, None, CurrentTime);
+  XSetSelectionOwner (screen->display->xdisplay, a,
+                      None, screen->wm_cm_timestamp);
 }
 
 GList *
