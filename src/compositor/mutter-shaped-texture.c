@@ -124,18 +124,18 @@ mutter_shaped_texture_dispose (GObject *object)
 
   if (priv->material != COGL_INVALID_HANDLE)
     {
-      cogl_material_unref (priv->material);
+      cogl_handle_unref (priv->material);
       priv->material = COGL_INVALID_HANDLE;
     }
   if (priv->material_unshaped != COGL_INVALID_HANDLE)
     {
-      cogl_material_unref (priv->material_unshaped);
+      cogl_handle_unref (priv->material_unshaped);
       priv->material_unshaped = COGL_INVALID_HANDLE;
     }
 #if 1 /* see comment in mutter_shaped_texture_paint */
   if (priv->material_workaround != COGL_INVALID_HANDLE)
     {
-      cogl_material_unref (priv->material_workaround);
+      cogl_handle_unref (priv->material_workaround);
       priv->material_workaround = COGL_INVALID_HANDLE;
     }
 #endif
@@ -191,10 +191,10 @@ mutter_shaped_texture_dirty_mask (MutterShapedTexture *stex)
       cogl_texture_get_gl_texture (priv->mask_texture,
                                    &mask_gl_tex, &mask_gl_target);
 
-      if (mask_gl_target == CGL_TEXTURE_RECTANGLE_ARB)
+      if (mask_gl_target == GL_TEXTURE_RECTANGLE_ARB)
         glDeleteTextures (1, &mask_gl_tex);
 
-      cogl_texture_unref (priv->mask_texture);
+      cogl_handle_unref (priv->mask_texture);
       priv->mask_texture = COGL_INVALID_HANDLE;
     }
 }
@@ -254,23 +254,23 @@ mutter_shaped_texture_ensure_mask (MutterShapedTexture *stex)
 
       cogl_texture_get_gl_texture (paint_tex, NULL, &paint_gl_target);
 
-      if (paint_gl_target == CGL_TEXTURE_RECTANGLE_ARB)
+      if (paint_gl_target == GL_TEXTURE_RECTANGLE_ARB)
         {
           GLuint tex;
 
           glGenTextures (1, &tex);
-          glBindTexture (CGL_TEXTURE_RECTANGLE_ARB, tex);
+          glBindTexture (GL_TEXTURE_RECTANGLE_ARB, tex);
           glPixelStorei (GL_UNPACK_ROW_LENGTH, tex_width);
           glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
           glPixelStorei (GL_UNPACK_SKIP_ROWS, 0);
           glPixelStorei (GL_UNPACK_SKIP_PIXELS, 0);
-          glTexImage2D (CGL_TEXTURE_RECTANGLE_ARB, 0,
+          glTexImage2D (GL_TEXTURE_RECTANGLE_ARB, 0,
                         GL_ALPHA, tex_width, tex_height,
                         0, GL_ALPHA, GL_UNSIGNED_BYTE, mask_data);
 
           priv->mask_texture
             = cogl_texture_new_from_foreign (tex,
-                                             CGL_TEXTURE_RECTANGLE_ARB,
+                                             GL_TEXTURE_RECTANGLE_ARB,
                                              tex_width, tex_height,
                                              0, 0,
                                              COGL_PIXEL_FORMAT_A_8);
@@ -299,9 +299,6 @@ mutter_shaped_texture_paint (ClutterActor *actor)
   guint tex_width, tex_height;
   ClutterActorBox alloc;
   CoglHandle material;
-#if 1 /* please see comment below about workaround */
-  guint depth;
-#endif
 
   if (priv->clip_region && gdk_region_empty (priv->clip_region))
     return;
@@ -363,35 +360,6 @@ mutter_shaped_texture_paint (ClutterActor *actor)
 	}
       material = priv->material;
 
-#if 1
-      /* This was added as a workaround. It seems that with the intel
-       * drivers when multi-texturing using an RGB TFP texture, the
-       * texture is actually setup internally as an RGBA texture, where
-       * the alpha channel is mostly 0.0 so you only see a shimmer of the
-       * window. This workaround forcibly defines the alpha channel as
-       * 1.0. Maybe there is some clutter/cogl state that is interacting
-       * with this that is being overlooked, but for now this seems to
-       * work. */
-      g_object_get (stex, "pixmap-depth", &depth, NULL);
-      if (depth == 24)
-	{
-	  if (priv->material_workaround == COGL_INVALID_HANDLE)
-	    {
-	      material = priv->material_workaround = cogl_material_new ();
-
-	      cogl_material_set_layer_combine (material, 0,
-					       "RGB = MODULATE (TEXTURE, PREVIOUS)"
-					       "A = REPLACE (PREVIOUS)",
-					       NULL);
-	      cogl_material_set_layer_combine (material, 1,
-					       "RGBA = MODULATE (PREVIOUS, TEXTURE[A])",
-					       NULL);
-	    }
-
-	  material = priv->material_workaround;
-	}
-#endif
-
       cogl_material_set_layer (material, 1, priv->mask_texture);
     }
 
@@ -427,24 +395,34 @@ mutter_shaped_texture_paint (ClutterActor *actor)
 	}
       else
 	{
-	  float coords[MAX_RECTS * 8];
+	  float coords[8];
+          float x1, y1, x2, y2;
+
 	  for (i = 0; i < n_rects; i++)
 	    {
 	      GdkRectangle *rect = &rects[i];
 
-	      coords[i * 8 + 0] = rect->x;
-	      coords[i * 8 + 1] = rect->y;
-	      coords[i * 8 + 2] = rect->x + rect->width;
-	      coords[i * 8 + 3] = rect->y + rect->height;
-	      coords[i * 8 + 4] = rect->x / (alloc.x2 - alloc.x1);
-	      coords[i * 8 + 5] = rect->y / (alloc.y2 - alloc.y1);
-	      coords[i * 8 + 6] = (rect->x + rect->width) / (alloc.x2 - alloc.x1);
-	      coords[i * 8 + 7] = (rect->y + rect->height) / (alloc.y2 - alloc.y1);
-	    }
+	      x1 = rect->x;
+	      y1 = rect->y;
+	      x2 = rect->x + rect->width;
+	      y2 = rect->y + rect->height;
+
+              coords[0] = rect->x / (alloc.x2 - alloc.x1);
+	      coords[1] = rect->y / (alloc.y2 - alloc.y1);
+	      coords[2] = (rect->x + rect->width) / (alloc.x2 - alloc.x1);
+	      coords[3] = (rect->y + rect->height) / (alloc.y2 - alloc.y1);
+
+              coords[4] = coords[0];
+              coords[5] = coords[1];
+              coords[6] = coords[2];
+              coords[7] = coords[3];
+
+              cogl_rectangle_with_multitexture_coords (x1, y1, x2, y2,
+                                                       &coords[0], 8);
+            }
 
 	  g_free (rects);
 
-	  cogl_rectangles_with_texture_coords (coords, n_rects);
 	  return;
 	}
     }

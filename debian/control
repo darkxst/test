@@ -19,7 +19,7 @@ Build-Depends: cdbs (>= 0.4.41),
                gir1.0-freedesktop,
                gir-repository-dev,
                libgirepository1.0-dev (>= 0.6.5-3),
-               libclutter-1.0-dev (>= 1.0.0),
+               libclutter-1.0-dev (>= 1.2.0),
                libgtk2.0-dev (>= 2.10.0),
                libpango1.0-dev (>= 1.2.0),
                libgconf2-dev (>= 2.6.1-2),
@@ -43,7 +43,6 @@ Build-Depends: cdbs (>= 0.4.41),
                dpkg-dev (>= 1.13.19)
 Standards-Version: 3.8.3
 Vcs-Bzr: https://code.launchpad.net/~ubuntu-desktop/mutter/ubuntu/
-Vcs-Browser: http://bazaar.launchpad.net/~ubuntu-desktop/mutter/ubuntu/
 
 Package: mutter
 Section: x11
@@ -58,7 +57,6 @@ Recommends: gnome-session | x-session-manager
 Suggests: gnome-control-center (>= 1:2.5.4),
           gnome-themes,
           xdg-user-dirs
-Replaces: libmutter0 (<= 2.28.0-0ubuntu1), mutter-common (<= 2.28.0-0ubuntu1)
 Description: lightweight GTK+ window manager
  Mutter is a small window manager, using GTK+ and Clutter to do
  everything.
@@ -124,14 +122,14 @@ Description: Development files for the Mutter window manager
  .
  This package contains the development files.
 
-Package: gir1.0-mutter-2.28
+Package: gir1.0-mutter-2.31
 Section: libs
 Architecture: any
 Depends: ${gir:Depends},
          ${shlib:Depends},
          ${misc:Depends}
-Conflicts: libmutter-private0 (<= 2.28.0-1), libmutter0 (<= 2.28.0-0ubuntu1)
-Replaces: libmutter-private0 (<= 2.28.0-1), libmutter0 (<= 2.28.0-0ubuntu1)
+Conflicts: libmutter-private0 (<= 2.28.0-1), gir1.0-mutter-2.28, gir1.0-mutter-2.29
+Replaces: libmutter-private0 (<= 2.28.0-1), gir1.0-mutter-2.28, gir1.0-mutter-2.29
 Description: GObject introspection data for Mutter
  Mutter is a small window manager, using GTK+ and Clutter to do
  everything.

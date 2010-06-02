@@ -39,6 +39,7 @@ mutter_SOURCES= 				\
 	compositor/mutter-shaped-texture.h	\
 	compositor/tidy/tidy-texture-frame.c	\
 	compositor/tidy/tidy-texture-frame.h	\
+	gtk-compat.h				\
 	include/compositor.h			\
 	include/mutter-plugin.h			\
 	include/mutter-window.h			\
@@ -214,6 +215,7 @@ Meta-$(api_version).gir: $(G_IR_SCANNER) mutter $(libmutterinclude_HEADERS) $(mu
 		--include=Clutter-1.0			\
 		--pkg=clutter-1.0			\
 		--pkg=gtk+-2.0				\
+		--include=xlib-2.0			\
 		--include=xfixes-4.0			\
 		--program=$$pwd/mutter			\
 		$(filter %.c,$(mutter_SOURCES))		\

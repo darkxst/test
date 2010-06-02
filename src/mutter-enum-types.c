@@ -222,6 +222,7 @@ meta_menu_op_get_type (void)
   if (g_once_init_enter (&g_enum_type_id__volatile))
     {
       static const GFlagsValue values[] = {
+        { META_MENU_OP_NONE, "META_MENU_OP_NONE", "none" },
         { META_MENU_OP_DELETE, "META_MENU_OP_DELETE", "delete" },
         { META_MENU_OP_MINIMIZE, "META_MENU_OP_MINIMIZE", "minimize" },
         { META_MENU_OP_UNMAXIMIZE, "META_MENU_OP_UNMAXIMIZE", "unmaximize" },
@@ -1062,6 +1063,7 @@ meta_preference_get_type (void)
         { META_PREF_CURSOR_SIZE, "META_PREF_CURSOR_SIZE", "cursor-size" },
         { META_PREF_COMPOSITING_MANAGER, "META_PREF_COMPOSITING_MANAGER", "compositing-manager" },
         { META_PREF_RESIZE_WITH_RIGHT_BUTTON, "META_PREF_RESIZE_WITH_RIGHT_BUTTON", "resize-with-right-button" },
+        { META_PREF_FORCE_FULLSCREEN, "META_PREF_FORCE_FULLSCREEN", "force-fullscreen" },
         { META_PREF_CLUTTER_PLUGINS, "META_PREF_CLUTTER_PLUGINS", "clutter-plugins" },
         { META_PREF_LIVE_HIDDEN_WINDOWS, "META_PREF_LIVE_HIDDEN_WINDOWS", "live-hidden-windows" },
         { META_PREF_NO_TAB_POPUP, "META_PREF_NO_TAB_POPUP", "no-tab-popup" },

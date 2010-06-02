@@ -1,60 +1,70 @@
-mutter (2.28.1~git20091208-1ubuntu7) lucid; urgency=low
+mutter (2.31.2-2ubuntu1) maverick; urgency=low
 
-  * 80_no_session_delay.patch: Start mutter as early as possible, since with
-    plugins (such as gnome-shell) it will take the longest time to start up;
-    Let the scheduler deal with squeezing the other processes into mutter's
-    idle periods.
-
- -- Martin Pitt <martin.pitt@ubuntu.com>  Fri, 12 Feb 2010 12:26:24 +0100
-
-mutter (2.28.1~git20091208-1ubuntu6) lucid; urgency=low
-
-  * add debian/patches/11_hide_tooltip_on_decorator.patch: (LP: #519856)
-    add a gconf key (/desktop/gnome/interface/hide_decorator_tooltip)
-    to disable tooltip in decorator bar. If key not present, show the tooltip.
-
- -- Didier Roche <didrocks@ubuntu.com>  Wed, 10 Feb 2010 18:08:45 +0100
-
-mutter (2.28.1~git20091208-1ubuntu5) lucid; urgency=low
-
-  * debian/control.in:
-    - add Vcs-Bzr into debian/control.in
-  * add 91_add_window_groups.patch
-    - Adds support for a above, normal and below window groups, for more 
+  * Merge from debian experimental, remaining changes:
+    + debian/control.in:
+      - Vcs-Bzr tag
+    + renamed debian/gir1.0-mutter-2.29.install to
+      debian/gir1.0-mutter-2.31.install as bin package name changed
+    + debian/patches/10_no-ws-switcher.patch:
+      Don't show ws selector when you only have one ws
+    + debian/patches/11_hide_tooltip_on_decorator.patch:
+      add a gconf key (/desktop/gnome/interface/hide_decorator_tooltip)
+      to disable tooltip in decorator bar. If key not present, show the
+      tooltip.
+    + debian/patches/80_no_session_delay.patch:
+      Start mutter as early as possible, since with plugins (such as
+      gnome-shell) it will take the longest time to start up; Let the
+      scheduler deal with squeezing the other processes into mutter's
+      idle periods.
+    + debian/patches/91_add_window_groups.patch:
+      Adds support for a above, normal and below window groups, for more 
       control by plugins
+    + debian/rules:
+      use DEB_INSTALL_DOCS_mutter, not DEB_INSTALL_DOCS_metacity
 
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 04 Feb 2010 20:32:21 -0800
+ -- Didier Roche <didrocks@ubuntu.com>  Wed, 02 Jun 2010 17:26:33 +0200
 
-mutter (2.28.1~git20091208-1ubuntu4) lucid; urgency=low
+mutter (2.31.2-2) experimental; urgency=low
 
-  * debian/control: Add Vcs-* headers, imported into bzr now.
-  * Add debian/patches/80_no_session_delay.patch: Start mutter together with
-    all other components, to avoid a bottleneck.
+  * debian/control:
+  - fix GIR package name to account for GIR API name change
 
- -- Martin Pitt <martin.pitt@ubuntu.com>  Tue, 26 Jan 2010 16:20:31 +0100
+ -- Gustavo Noronha Silva <kov@debian.org>  Wed, 26 May 2010 15:15:34 -0300
 
-mutter (2.28.1~git20091208-1ubuntu3) lucid; urgency=low
+mutter (2.31.2-1) experimental; urgency=low
 
-  * add debian/patches/10_no-ws-switcher.patch:
-    Don't show ws selector when you only have one ws (LP: #506944)
+  * New development release
 
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 14 Jan 2010 17:03:20 +0100
+ -- Gustavo Noronha Silva <kov@debian.org>  Wed, 26 May 2010 10:51:58 -0300
 
-mutter (2.28.1~git20091208-1ubuntu2) lucid; urgency=low
+mutter (2.29.1-1) experimental; urgency=low
 
-  * debian/control{,.in}: Add missing Replaces/Conflicts
-    - gir1.0-mutter-2.28: Replaces and conflicts libmutter0 (<= 2.28.0-0ubuntu1)
-    - mutter: Replaces libmutter0 (<= 2.28.0-0ubuntu1), mutter-common (<=
-      2.28.0-0ubuntu1)
+  * New development release.
+  * debian/control:
+  - build-dep on clutter >= 1.2
 
- -- Michael Bienia <geser@ubuntu.com>  Fri, 08 Jan 2010 21:24:05 +0100
+ -- Gustavo Noronha Silva <kov@debian.org>  Thu, 08 Apr 2010 20:48:38 -0300
 
-mutter (2.28.1~git20091208-1ubuntu1) lucid; urgency=low
+mutter (2.29.0-2) unstable; urgency=low
 
-  * Merge with Debian squeeze.
-  * debian/rules: Replace remaining occurances of "metacity" with "mutter". 
+  * debian/control:
+  - fix gir package name, because the typelib has changed its name
 
- -- Michael Bienia <geser@ubuntu.com>  Fri, 08 Jan 2010 14:40:43 +0100
+ -- Gustavo Noronha Silva <kov@debian.org>  Mon, 15 Mar 2010 17:27:59 -0300
+
+mutter (2.29.0-1) unstable; urgency=low
+
+  * New upstream development release.
+  * debian/rules:
+  - update makeshlibs argument to require >= 2.29.0
+
+ -- Gustavo Noronha Silva <kov@debian.org>  Tue, 02 Mar 2010 19:19:44 -0300
+
+mutter (2.28.1~git20100129-1) unstable; urgency=low
+
+  * Upstream snapshot
+
+ -- Gustavo Noronha Silva <kov@debian.org>  Fri, 29 Jan 2010 12:04:09 -0200
 
 mutter (2.28.1~git20091208-1) unstable; urgency=low
 
