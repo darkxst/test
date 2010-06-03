@@ -1,3 +1,11 @@
+mutter (2.31.2-2ubuntu2) maverick; urgency=low
+
+  * debian/patches/14_wrong_colormap.patch:
+    - Use correct colormap, causes crash with client side decorations. Patch
+      from Fabien Tassin and Sarvatt
+
+ -- Didier Roche <didrocks@ubuntu.com>  Thu, 03 Jun 2010 21:32:35 +0200
+
 mutter (2.31.2-2ubuntu1) maverick; urgency=low
 
   * Merge from debian experimental, remaining changes:
