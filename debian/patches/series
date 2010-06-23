@@ -1,6 +1,10 @@
 01_Wcast-align.patch
+03_strict_focus.patch
+04_worspaces_default_name.patch
+05_raise_on_click_for_click_mode.patch
 10_no-ws-switcher.patch
 11_hide_tooltip_on_decorator.patch
+13_better_support_for_button_layout.patch
 14_wrong_colormap.patch
 15_detect_maximized_window.patch
 80_no_session_delay.patch
