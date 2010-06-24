@@ -1,6 +1,6 @@
 01_Wcast-align.patch
 03_strict_focus.patch
-04_worspaces_default_name.patch
+04_support_drag_drop_with_alt_tab.patch
 05_raise_on_click_for_click_mode.patch
 10_no-ws-switcher.patch
 11_hide_tooltip_on_decorator.patch
