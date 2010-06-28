@@ -1,3 +1,13 @@
+mutter (2.31.2-2ubuntu6) maverick; urgency=low
+
+  * remove debian/patches/80_no_session_delay.patch:
+    finally was an evil idea to delay mutter from WindowManager to
+    Initialization phase. This create a lot of weird effects like
+    gnome-keyring race condition not putting most of the time
+    SSH_AUTH_SOCK to the right value (LP: #599506)
+
+ -- Didier Roche <didrocks@ubuntu.com>  Mon, 28 Jun 2010 21:07:55 +0200
+
 mutter (2.31.2-2ubuntu5) maverick; urgency=low
 
   * remove debian/patches/04_worspaces_default_name.patch:

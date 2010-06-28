@@ -7,7 +7,6 @@
 13_better_support_for_button_layout.patch
 14_wrong_colormap.patch
 15_detect_maximized_window.patch
-80_no_session_delay.patch
 90_autotools.patch
 91_add_window_groups.patch
 99_ltmain_as-needed.patch
