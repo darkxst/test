@@ -1,3 +1,42 @@
+mutter (2.31.2-3ubuntu1) maverick; urgency=low
+
+  * Merge from debian experimental, remaining changes:
+    + debian/control.in:
+      - Vcs-Bzr tag
+    - debian/patches/03_strict_focus.patch:
+      add a new focus mode META_FOCUS_MODE_STRICT
+      (/apps/metacity/general/focus_mode = strict)
+    - debian/patches/04_support_drag_drop_with_alt_tab.patch:
+      support alt-tab during drag and drop operation
+    - debian/patches/05_raise_on_click_for_click_mode.patch:
+      use raise on click option
+    + debian/patches/10_no-ws-switcher.patch:
+      Don't show ws selector when you only have one ws
+    + debian/patches/11_hide_tooltip_on_decorator.patch:
+      add a gconf key (/desktop/gnome/interface/hide_decorator_tooltip)
+      to disable tooltip in decorator bar. If key not present, show the
+      tooltip.
+    - debian/patches/13_better_support_for_button_layout.patch
+      Corrected support for buttons backgrounds with transparency
+    - debian/patches/14_wrong_colormap.patch:
+      Use correct colormap, causes crash with client side decorations.
+    - add debian/patches/15_detect_maximized_window.patch:
+      detect window's state
+    + debian/patches/91_add_window_groups.patch:
+      Adds support for a above, normal and below window groups, for more
+      control by plugins
+    + debian/rules:
+      use DEB_INSTALL_DOCS_mutter, not DEB_INSTALL_DOCS_metacity
+
+ -- Didier Roche <didrocks@ubuntu.com>  Tue, 29 Jun 2010 11:44:19 +0200
+
+mutter (2.31.2-3) experimental; urgency=low
+
+  * debian/gir1.0-mutter-2.{29->31}.install:
+  - actually install the typelib file
+
+ -- Gustavo Noronha Silva <kov@debian.org>  Mon, 31 May 2010 11:37:33 -0300
+
 mutter (2.31.2-2ubuntu6) maverick; urgency=low
 
   * remove debian/patches/80_no_session_delay.patch:
