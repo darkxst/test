@@ -9,4 +9,5 @@
 15_detect_maximized_window.patch
 90_autotools.patch
 91_add_window_groups.patch
+92_handle_event_mask_when_managing_window.patch
 99_ltmain_as-needed.patch
