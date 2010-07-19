@@ -1,0 +1,15 @@
+Description: Paint the full region and not only the clipped one for clone
+Origin: Ubuntu
+Bug: ...
+Author: Jason Smith <jason.smith@canonical.com>
+--- a/src/compositor/mutter-shaped-texture.c	2010-04-17 20:44:38.000000000 -0400
++++ b/src/compositor/mutter-shaped-texture.c	2010-07-19 04:49:14.209580452 -0400
+@@ -376,7 +376,7 @@
+ 
+   clutter_actor_get_allocation_box (actor, &alloc);
+ 
+-  if (priv->clip_region)
++  if (priv->clip_region && !clutter_actor_is_in_clone_paint (actor))
+     {
+       GdkRectangle *rects;
+       int n_rects;

@@ -1,3 +1,11 @@
+mutter (2.31.2-3ubuntu3) maverick; urgency=low
+
+  * add debian/patches/16_paint_clone_unclipped.patch:
+    Paint the full region and not only the clipped one for clone 
+    (Jason Smith)
+
+ -- Didier Roche <didrocks@ubuntu.com>  Mon, 19 Jul 2010 14:12:04 +0200
+
 mutter (2.31.2-3ubuntu2) maverick; urgency=low
 
   * debian/patches/92_handle_event_mask_when_managing_window.patch:
