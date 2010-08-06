@@ -8,6 +8,7 @@ Build-Depends: cdbs (>= 0.4.41),
                debhelper (>= 5),
                quilt,
                intltool (>= 0.34.90),
+               dh-autoreconf,
                gobject-introspection (>= 0.6.5-3),
                gir1.0-clutter-1.0,
                gir1.0-glib-2.0,
@@ -49,6 +50,7 @@ Depends: ${shlibs:Depends},
          zenity
 Provides: x-window-manager
 Recommends: gnome-session | x-session-manager
+Breaks: unity (<< 0.2.24), gnome-shell (<= 2.31.2-1ubuntu1)
 Suggests: gnome-control-center (>= 1:2.5.4),
           gnome-themes,
           xdg-user-dirs

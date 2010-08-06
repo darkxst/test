@@ -1,3 +1,17 @@
+mutter (2.31.5-0ubuntu1) maverick; urgency=low
+
+  * New upstream release:
+    - Don't use JsonClutter but rather system one (LP: #614230)
+  * adapt debian/patches/01_Wcast-align.patch
+  * debian/control.in, debian/rules:
+    - build-dep on dh-autoreconf and launch it on build
+    - remove debian/patches/90_autotools.patch
+    - Breaks: unity << 0.2.24 and gnome-shell <= 2.31.2-1ubuntu1
+  * debian/mutter-common.install:
+    - locale no more installed
+
+ -- Didier Roche <didrocks@ubuntu.com>  Fri, 06 Aug 2010 16:24:26 +0200
+
 mutter (2.31.2-3ubuntu3) maverick; urgency=low
 
   * add debian/patches/16_paint_clone_unclipped.patch:
@@ -9,9 +23,9 @@ mutter (2.31.2-3ubuntu3) maverick; urgency=low
 mutter (2.31.2-3ubuntu2) maverick; urgency=low
 
   * debian/patches/92_handle_event_mask_when_managing_window.patch:
-    - Don't screw up the event mask when "managing" our own windows 
+    - Don't screw up the event mask when "managing" our own windows
 
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 15 Jul 2010 17:17:20 +0200
+ -- Didier Roche <didrocks@ubuntu.com>  Thu, 15 Jul 2010 11:54:23 +0200
 
 mutter (2.31.2-3ubuntu1) maverick; urgency=low
 
