@@ -1,3 +1,11 @@
+mutter (2.31.5-0ubuntu2) maverick; urgency=low
+
+  * debian/control.in:
+    - build-dep on latest libgirepository1.0-dev and libclutter-1.0-dev
+      for gir change
+
+ -- Didier Roche <didrocks@ubuntu.com>  Tue, 10 Aug 2010 20:03:28 +0200
+
 mutter (2.31.5-0ubuntu1) maverick; urgency=low
 
   * New upstream release:
