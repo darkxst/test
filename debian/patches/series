@@ -8,6 +8,7 @@
 14_wrong_colormap.patch
 15_detect_maximized_window.patch
 16_paint_clone_unclipped.patch
+17_add_overlay_key_signals.patch
 91_add_window_groups.patch
 92_handle_event_mask_when_managing_window.patch
 99_ltmain_as-needed.patch

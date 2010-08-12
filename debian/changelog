@@ -1,3 +1,10 @@
+mutter (2.31.5-0ubuntu3) maverick; urgency=low
+
+  * debian/patches/17_add_overlay_key_signals.patch:
+    - additional signals when triggering key
+
+ -- Didier Roche <didrocks@ubuntu.com>  Thu, 12 Aug 2010 15:14:39 +0200
+
 mutter (2.31.5-0ubuntu2) maverick; urgency=low
 
   * debian/control.in:
