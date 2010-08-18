@@ -1,3 +1,9 @@
+mutter (2.31.5-0ubuntu3.1) maverick; urgency=low
+
+  * src/gdk-compat.h: workaround issue with the new gdk there
+
+ -- Sebastien Bacher <seb128@ubuntu.com>  Wed, 18 Aug 2010 23:24:19 +0200
+
 mutter (2.31.5-0ubuntu3) maverick; urgency=low
 
   * debian/patches/17_add_overlay_key_signals.patch:

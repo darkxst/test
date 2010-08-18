@@ -9,8 +9,6 @@
  * using GDK_DISABLE_DEPRECATED.
  */
 
-#if !GTK_CHECK_VERSION (2, 21, 1)
-
 #define gdk_window_get_background(w,c)    *c = GDK_WINDOW_OBJECT (w)->bg_color
 #define gdk_visual_get_depth(v)           GDK_VISUAL(v)->depth
 #define gdk_window_get_back_pixmap(w,p,r)                           \
@@ -29,7 +27,5 @@
     if (r != NULL)                                                  \
       *r = (priv->bg_pixmap == GDK_PARENT_RELATIVE_BG);             \
   } G_STMT_END
-
-#endif /*GTK_CHECK_VERSION */
 
 #endif /* __GDK_COMPAT_H__ */
