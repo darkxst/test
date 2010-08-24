@@ -1,3 +1,9 @@
+mutter (2.31.5-0ubuntu4) maverick; urgency=low
+
+  * no change rebuild after landing clutter .pc file fixes; see LP: #623376
+
+ -- Alexander Sack <asac@linaro.org>  Tue, 24 Aug 2010 23:09:35 +0200
+
 mutter (2.31.5-0ubuntu3.1) maverick; urgency=low
 
   * src/gdk-compat.h: workaround issue with the new gdk there
