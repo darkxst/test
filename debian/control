@@ -20,7 +20,7 @@ Build-Depends: cdbs (>= 0.4.41),
                gir1.0-freedesktop,
                gir-repository-dev,
                libgirepository1.0-dev (>= 0.9.3-0ubuntu2),
-               libclutter-1.0-dev (>= 1.2.12-0ubuntu10~),
+               libclutter-1.0-dev (>= 1.2.12-0ubuntu4),
                libgtk2.0-dev (>= 2.10.0),
                libpango1.0-dev (>= 1.2.0),
                libgconf2-dev (>= 2.6.1-2),
@@ -42,7 +42,7 @@ Build-Depends: cdbs (>= 0.4.41),
                gnome-doc-utils (>= 0.8),
                gnome-pkg-tools (>= 0.10),
                dpkg-dev (>= 1.13.19)
-Standards-Version: 3.9.0
+Standards-Version: 3.8.3
 Vcs-Bzr: https://code.launchpad.net/~ubuntu-desktop/mutter/ubuntu/
 
 Package: mutter
