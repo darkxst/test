@@ -1,3 +1,10 @@
+mutter (2.31.5-0ubuntu6) maverick; urgency=low
+
+  * removing debian/patches/18_unmimize.patch making apps closing when opening
+    (reopening corresponding bug and fixing LP: #637108)
+
+ -- Didier Roche <didrocks@ubuntu.com>  Tue, 14 Sep 2010 16:52:01 +0200
+
 mutter (2.31.5-0ubuntu5) maverick; urgency=low
 
   [ Robert Ancell ]
