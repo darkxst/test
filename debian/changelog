@@ -1,3 +1,11 @@
+mutter (2.31.5-0ubuntu7) maverick; urgency=low
+
+  * debian/patches/18_unmimize.patch:
+    - Revert dropping this patch, it wasn't the causing 
+      (LP: #637108), which is now fixed in indicator-appmenu
+
+ -- Ken VanDine <ken.vandine@canonical.com>  Thu, 16 Sep 2010 09:47:58 -0400
+
 mutter (2.31.5-0ubuntu6) maverick; urgency=low
 
   * removing debian/patches/18_unmimize.patch making apps closing when opening

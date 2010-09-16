@@ -11,6 +11,7 @@
 15_detect_maximized_window.patch
 16_paint_clone_unclipped.patch
 17_add_overlay_key_signals.patch
+18_unmimize.patch
 91_add_window_groups.patch
 92_handle_event_mask_when_managing_window.patch
 95_workaround_gdk_compat.patch
