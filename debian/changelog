@@ -1,3 +1,14 @@
+mutter (2.31.5-0ubuntu8) maverick; urgency=low
+
+  * debian/patches/20_unity_no_3D_detection.patch:
+    - detect in UNE session if the graphical driver is software-rendered.
+      if so, exit from the session after prompting and write the .dmrc file
+      to the gnome session (LP: #614088)
+  * debian/control:
+    - add libdbus-glib-1-dev build-dep
+
+ -- Didier Roche <didrocks@ubuntu.com>  Mon, 27 Sep 2010 21:53:21 +0200
+
 mutter (2.31.5-0ubuntu7) maverick; urgency=low
 
   * debian/patches/18_unmimize.patch:
