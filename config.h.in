@@ -45,6 +45,9 @@
 /* Define if your <locale.h> file defines LC_MESSAGES. */
 #undef HAVE_LC_MESSAGES
 
+/* Building with libcanberra for playing sounds */
+#undef HAVE_LIBCANBERRA
+
 /* Define to 1 if you have the <locale.h> header file. */
 #undef HAVE_LOCALE_H
 
@@ -153,6 +156,9 @@
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+/* Use cairo_region_t instead of GdkRegion */
+#undef USE_CAIRO_REGION
 
 /* Version number of package */
 #undef VERSION

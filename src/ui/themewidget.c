@@ -24,8 +24,8 @@
 #include "themewidget.h"
 #include <math.h>
 
-static void meta_area_class_init   (MetaAreaClass  *klass);
-static void meta_area_init         (MetaArea       *area);
+#include "gtk-compat.h"
+
 static void meta_area_size_request (GtkWidget      *widget,
                                     GtkRequisition *req);
 static gint meta_area_expose       (GtkWidget      *widget,
@@ -33,32 +33,7 @@ static gint meta_area_expose       (GtkWidget      *widget,
 static void meta_area_finalize     (GObject        *object);
 
 
-static GtkMiscClass *parent_class;
-
-GType
-meta_area_get_type (void)
-{
-  static GType area_type = 0;
-
-  if (!area_type)
-    {
-      static const GtkTypeInfo area_info =
-      {
-	"MetaArea",
-	sizeof (MetaArea),
-	sizeof (MetaAreaClass),
-	(GtkClassInitFunc) meta_area_class_init,
-	(GtkObjectInitFunc) meta_area_init,
-	/* reserved_1 */ NULL,
-        /* reserved_2 */ NULL,
-        (GtkClassInitFunc) NULL,
-      };
-
-      area_type = gtk_type_unique (GTK_TYPE_MISC, &area_info);
-    }
-
-  return area_type;
-}
+G_DEFINE_TYPE (MetaArea, meta_area, GTK_TYPE_MISC);
 
 static void
 meta_area_class_init (MetaAreaClass *class)
@@ -69,7 +44,6 @@ meta_area_class_init (MetaAreaClass *class)
 
   object_class = (GtkObjectClass*) class;
   widget_class = (GtkWidgetClass*) class;
-  parent_class = gtk_type_class (gtk_misc_get_type ());
 
   gobject_class->finalize = meta_area_finalize;
 
@@ -80,7 +54,7 @@ meta_area_class_init (MetaAreaClass *class)
 static void
 meta_area_init (MetaArea *area)
 {
-  GTK_WIDGET_SET_FLAGS (area, GTK_NO_WINDOW);
+  gtk_widget_set_has_window (GTK_WIDGET (area), FALSE);
 }
 
 GtkWidget*
@@ -88,7 +62,7 @@ meta_area_new (void)
 {
   MetaArea *area;
   
-  area = gtk_type_new (META_TYPE_AREA);
+  area = g_object_new (META_TYPE_AREA, NULL);
   
   return GTK_WIDGET (area);
 }
@@ -103,7 +77,7 @@ meta_area_finalize (GObject *object)
   if (area->dnotify)
     (* area->dnotify) (area->user_data);
   
-  G_OBJECT_CLASS (parent_class)->finalize (object);
+  G_OBJECT_CLASS (meta_area_parent_class)->finalize (object);
 }
 
 static gint
@@ -111,28 +85,34 @@ meta_area_expose (GtkWidget      *widget,
                   GdkEventExpose *event)
 {
   MetaArea *area;
+  GtkAllocation allocation;
   GtkMisc *misc;
+  GtkRequisition requisition;
+  gfloat xalign, yalign;
   gint x, y;
-  gfloat xalign;
+  gint xpad, ypad;
 
   g_return_val_if_fail (META_IS_AREA (widget), FALSE);
   g_return_val_if_fail (event != NULL, FALSE);
 
-  if (GTK_WIDGET_DRAWABLE (widget))
+  if (gtk_widget_is_drawable (widget))
     {
       area = META_AREA (widget);
       misc = GTK_MISC (widget);
 
-      if (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_LTR)
-	xalign = misc->xalign;
-      else
-	xalign = 1.0 - misc->xalign;
+      gtk_widget_get_allocation (widget, &allocation);
+      gtk_widget_get_requisition (widget, &requisition);
+      gtk_misc_get_alignment (misc, &xalign, &yalign);
+      gtk_misc_get_padding (misc, &xpad, &ypad);
+
+      if (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_RTL)
+        xalign = 1.0 - xalign;
   
-      x = floor (widget->allocation.x + misc->xpad
-		 + ((widget->allocation.width - widget->requisition.width) * xalign)
+      x = floor (allocation.x + xpad
+		 + ((allocation.width - requisition.width) * xalign)
 		 + 0.5);
-      y = floor (widget->allocation.y + misc->ypad 
-		 + ((widget->allocation.height - widget->requisition.height) * misc->yalign)
+      y = floor (allocation.y + ypad
+		 + ((allocation.height - requisition.height) * yalign)
 		 + 0.5);
       
       if (area->expose_func)

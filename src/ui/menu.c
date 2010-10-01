@@ -386,6 +386,7 @@ meta_window_menu_new   (MetaFrames         *frames,
                   Display *display;
                   Window xroot;
                   GdkScreen *screen;
+                  GdkWindow *window;
                   GtkWidget *submenu;
                   int j;
 
@@ -398,9 +399,10 @@ meta_window_menu_new   (MetaFrames         *frames,
                   meta_verbose ("Creating %d-workspace menu current space %lu\n",
                       n_workspaces, active_workspace);
 
-                  display = gdk_x11_drawable_get_xdisplay (GTK_WIDGET (frames)->window);
+                  window = gtk_widget_get_window (GTK_WIDGET (frames));
+                  display = gdk_x11_drawable_get_xdisplay (window);
 
-                  screen = gdk_drawable_get_screen (GTK_WIDGET (frames)->window);
+                  screen = gdk_drawable_get_screen (window);
                   xroot = GDK_DRAWABLE_XID (gdk_screen_get_root_window (screen));
 
                   submenu = gtk_menu_new ();
@@ -443,12 +445,11 @@ meta_window_menu_new   (MetaFrames         *frames,
                           "workspace",
                           GINT_TO_POINTER (j));
 
-                      gtk_signal_connect_full (GTK_OBJECT (submi),
+                      g_signal_connect_data (GTK_OBJECT (submi),
                           "activate",
                           G_CALLBACK (activate_cb),
-                          NULL,
                           md,
-                          g_free, FALSE, FALSE);
+                          (GClosureNotify) g_free, 0);
 
                       gtk_menu_shell_append (GTK_MENU_SHELL (submenu), submi);
 
@@ -471,12 +472,11 @@ meta_window_menu_new   (MetaFrames         *frames,
               md->menu = menu;
               md->op = menuitem.op;
               
-              gtk_signal_connect_full (GTK_OBJECT (mi),
-                                       "activate",
-                                       G_CALLBACK (activate_cb),
-                                       NULL,
-                                       md,
-                                       g_free, FALSE, FALSE);
+              g_signal_connect_data (GTK_OBJECT (mi),
+                                     "activate",
+                                     G_CALLBACK (activate_cb),
+                                     md,
+                                     (GClosureNotify) g_free, 0);
             }
 
           if (mi)
@@ -520,7 +520,7 @@ meta_window_menu_popup (MetaWindowMenu     *menu,
                   button,
                   timestamp);
 
-  if (!GTK_MENU_SHELL (menu->menu)->have_xgrab)
+  if (!gtk_widget_get_visible (menu->menu))
     meta_warning ("GtkMenu failed to grab the pointer\n");
 }
 

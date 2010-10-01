@@ -83,10 +83,11 @@ struct _MetaDisplay
   
   char *name;
   Display *xdisplay;
+  char *hostname;
 
   Window leader_window;
   Window timestamp_pinging_window;
-  
+
   /* Pull in all the names of atoms as fields; we will intern them when the
    * class is constructed.
    */
@@ -303,22 +304,15 @@ struct _MetaDisplayClass
   GObjectClass parent_class;
 };
 
-/* Xserver time can wraparound, thus comparing two timestamps needs to take
- * this into account.  Here's a little macro to help out.  If no wraparound
- * has occurred, this is equivalent to
- *   time1 < time2
- * Of course, the rest of the ugliness of this macro comes from accounting
- * for the fact that wraparound can occur and the fact that a timestamp of
- * 0 must be special-cased since it means older than anything else. 
- *
- * Note that this is NOT an equivalent for time1 <= time2; if that's what
- * you need then you'll need to swap the order of the arguments and negate
- * the result.
- */
 #define XSERVER_TIME_IS_BEFORE_ASSUMING_REAL_TIMESTAMPS(time1, time2) \
   ( (( (time1) < (time2) ) && ( (time2) - (time1) < ((guint32)-1)/2 )) ||     \
     (( (time1) > (time2) ) && ( (time1) - (time2) > ((guint32)-1)/2 ))        \
   )
+/**
+ * XSERVER_TIME_IS_BEFORE:
+ *
+ * See the docs for meta_display_xserver_time_is_before().
+ */
 #define XSERVER_TIME_IS_BEFORE(time1, time2)                          \
   ( (time1) == 0 ||                                                     \
     (XSERVER_TIME_IS_BEFORE_ASSUMING_REAL_TIMESTAMPS(time1, time2) && \
@@ -390,9 +384,8 @@ void meta_display_grab_focus_window_button   (MetaDisplay *display,
 void meta_display_ungrab_focus_window_button (MetaDisplay *display,
                                               MetaWindow  *window);
 
-/* Next two functions are defined in edge-resistance.c */
-void meta_display_compute_resistance_and_snapping_edges (MetaDisplay *display);
-void meta_display_cleanup_edges                         (MetaDisplay *display);
+/* Next function is defined in edge-resistance.c */
+void meta_display_cleanup_edges              (MetaDisplay *display);
 
 /* make a request to ensure the event serial has changed */
 void     meta_display_increment_event_serial (MetaDisplay *display);

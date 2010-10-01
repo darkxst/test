@@ -27,6 +27,7 @@
 #include "prefs.h"
 #include "ui.h"
 #include "util.h"
+#include "compositor/mutter-plugin-manager.h"
 #ifdef HAVE_GCONF
 #include <gconf/gconf-client.h>
 #endif
@@ -52,6 +53,7 @@
 #define KEY_COMPOSITOR "/apps/metacity/general/compositing_manager"
 #define KEY_GNOME_ACCESSIBILITY "/desktop/gnome/interface/accessibility"
 
+#define KEY_COMMAND_DIRECTORY "/apps/metacity/keybinding_commands"
 #define KEY_COMMAND_PREFIX "/apps/metacity/keybinding_commands/command_"
 
 #define KEY_TERMINAL_DIR "/desktop/gnome/applications/terminal"
@@ -62,6 +64,7 @@
 #define KEY_WINDOW_BINDINGS_PREFIX "/apps/metacity/window_keybindings"
 #define KEY_LIST_BINDINGS_SUFFIX "_list"
 
+#define KEY_WORKSPACE_NAME_DIRECTORY "/apps/metacity/workspace_names"
 #define KEY_WORKSPACE_NAME_PREFIX "/apps/metacity/workspace_names/name_"
 
 #define KEY_CLUTTER_PLUGINS  "/apps/mutter/general/clutter_plugins"
@@ -100,6 +103,7 @@ static char *cursor_theme = NULL;
 static int   cursor_size = 24;
 static gboolean compositing_manager = FALSE;
 static gboolean resize_with_right_button = FALSE;
+static gboolean force_fullscreen = TRUE;
 
 static MetaVisualBellType visual_bell_type = META_VISUAL_BELL_FULLSCREEN_FLASH;
 static MetaButtonLayout button_layout;
@@ -121,18 +125,30 @@ static gboolean no_tab_popup = FALSE;
 #ifdef HAVE_GCONF
 static gboolean handle_preference_update_enum (const gchar *key, GConfValue *value);
 
-static gboolean update_key_binding     (const char *name,
+static char *binding_name (const char *gconf_key);
+
+static gboolean update_key_binding     (const char *key,
                                         const char *value);
-static gboolean find_and_update_list_binding (MetaKeyPref *bindings,
-                                              const char  *name,
-                                              GSList      *value);
-static gboolean update_key_list_binding (const char *name,
-                                         GSList      *value);
+typedef enum
+  {
+    META_LIST_OF_STRINGS,
+    META_LIST_OF_GCONFVALUE_STRINGS
+  } MetaStringListType;
+
+static gboolean find_and_update_list_binding (MetaKeyPref       *bindings,
+                                              const char        *key,
+                                              GSList            *value,
+                                              MetaStringListType type_of_value);
+static gboolean update_key_list_binding (const char         *key,
+                                         GSList             *value,
+                                         MetaStringListType  type_of_value);
 static gboolean update_command            (const char  *name,
                                            const char  *value);
 static gboolean update_workspace_name     (const char  *name,
                                            const char  *value);
 
+static void notify_new_value (const char *key,
+                              GConfValue *value);
 static void change_notify (GConfClient    *client,
                            guint           cnxn_id,
                            GConfEntry     *entry,
@@ -142,14 +158,8 @@ static char* gconf_key_for_workspace_name (int i);
 
 static void queue_changed (MetaPreference  pref);
 
-typedef enum
-  {
-    META_LIST_OF_STRINGS,
-    META_LIST_OF_GCONFVALUE_STRINGS
-  } MetaStringListType;
-
-static gboolean update_list_binding       (MetaKeyPref *binding,
-                                           GSList      *value,
+static gboolean update_list_binding       (MetaKeyPref       *binding,
+                                           GSList            *value,
                                            MetaStringListType type_of_value);
 
 static void     cleanup_error             (GError **error);
@@ -221,7 +231,12 @@ static GConfEnumStringPair symtab_titlebar_action[] =
     { 0, NULL },
   };
 
-/**
+/*
+ * Note that 'gchar *key' is the first element of all these structures;
+ * we count on that below in key_is_used and do_override.
+ */
+
+/*
  * The details of one preference which is constrained to be
  * one of a small number of string values-- in other words,
  * an enumeration.
@@ -234,21 +249,6 @@ static GConfEnumStringPair symtab_titlebar_action[] =
  * been outweighed by the bugs caused when the ordering of the enum
  * strings got out of sync with the actual enum statement.  Also,
  * there is existing library code to use this kind of symbol tables.
- *
- * Other things we might consider doing to clean this up in the
- * future include:
- *
- *   - most of the keys begin with the same prefix, and perhaps we
- *     could assume it if they don't start with a slash
- *
- *   - there are several cases where a single identifier could be used
- *     to generate an entire entry, and perhaps this could be done
- *     with a macro.  (This would reduce clarity, however, and is
- *     probably a bad thing.)
- *
- *   - these types all begin with a gchar* (and contain a MetaPreference)
- *     and we can factor out the repeated code in the handlers by taking
- *     advantage of this using some kind of union arrangement.
  */
 typedef struct
 {
@@ -488,6 +488,20 @@ static MetaIntPreference preferences_int[] =
     },
     { NULL, 0, NULL, 0, 0, 0, },
   };
+
+/*
+ * This is used to keep track of preferences that have been
+ * repointed to a different GConf key location; we modify the
+ * preferences arrays directly, but we also need to remember
+ * what we have done to handle subsequent overrides correctly.
+ */
+typedef struct
+{
+  gchar *original_key;
+  gchar *new_key;
+} MetaPrefsOverriddenKey;
+
+static GSList *overridden_keys;
 
 static void
 handle_preference_init_enum (void)
@@ -1024,6 +1038,7 @@ meta_prefs_init (void)
 #ifdef HAVE_GCONF
   GError *err = NULL;
   gchar **gconf_dir_cursor;
+  MutterPluginManager *plugin_manager;
   
   if (default_client != NULL)
     return;
@@ -1042,18 +1057,25 @@ meta_prefs_init (void)
       cleanup_error (&err);
     }
 
-  /* Pick up initial values. */
-
-  handle_preference_init_enum ();
-  handle_preference_init_bool ();
-  handle_preference_init_string ();
-  handle_preference_init_int ();
+  /* The plugin list is special and needs to be handled first */
 
   if (!clutter_plugins_overridden)
     clutter_plugins = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
                                              GCONF_VALUE_STRING, &err);
 
   cleanup_error (&err);
+
+  /* We now initialize plugins so that they can override any preference locations */
+
+  plugin_manager = mutter_plugin_manager_get_default ();
+  mutter_plugin_manager_load (plugin_manager);
+
+  /* Pick up initial values. */
+
+  handle_preference_init_enum ();
+  handle_preference_init_bool ();
+  handle_preference_init_string ();
+  handle_preference_init_int ();
 
   /* @@@ Is there any reason we don't do the add_dir here? */
   for (gconf_dir_cursor=gconf_dirs_we_are_interested_in;
@@ -1087,6 +1109,160 @@ meta_prefs_init (void)
   init_workspace_names ();
 }
 
+/* This count on the key being the first element of the
+ * preference structure */
+static gboolean
+key_is_used (void       *prefs,
+             size_t      pref_size,
+             const char *new_key)
+{
+  void *p = prefs;
+
+  while (TRUE)
+    {
+      char **key = p;
+      if (*key == NULL)
+        break;
+
+      if (strcmp (*key, new_key) == 0)
+        return TRUE;
+
+      p = (guchar *)p + pref_size;
+    }
+
+  return FALSE;
+}
+
+static gboolean
+do_override (void       *prefs,
+             size_t      pref_size,
+             const char *search_key,
+             char       *new_key)
+{
+  void *p = prefs;
+
+  while (TRUE)
+    {
+      char **key = p;
+      if (*key == NULL)
+        break;
+
+      if (strcmp (*key, search_key) == 0)
+        {
+          *key = new_key;
+          return TRUE;
+        }
+
+      p = (guchar *)p + pref_size;
+    }
+
+  return FALSE;
+}
+
+/**
+ * meta_prefs_override_preference_location
+ * @original_key: the normal Metacity preference location
+ * @new_key: the Metacity preference location to use instead.
+ *
+ * Substitute a different location to use instead of a standard Metacity
+ * GConf key location. This might be used if a plugin expected a different
+ * value for some preference than the Metacity default. While this function
+ * can be called at any point, this function should generally be called
+ * in a plugin's constructor, rather than in its start() method so the
+ * preference isn't first loaded with one value then changed to another
+ * value.
+ */
+void
+meta_prefs_override_preference_location (const char *original_key,
+                                         const char *new_key)
+{
+  const char *search_key;
+  char *new_key_copy;
+  gboolean found;
+  MetaPrefsOverriddenKey *overridden;
+  GSList *tmp;
+
+  /* Merge identical overrides, this isn't an error */
+  for (tmp = overridden_keys; tmp; tmp = tmp->next)
+    {
+      MetaPrefsOverriddenKey *tmp_overridden = tmp->data;
+      if (strcmp (tmp_overridden->original_key, original_key) == 0 &&
+          strcmp (tmp_overridden->new_key, new_key) == 0)
+        return;
+    }
+
+  /* We depend on a unique mapping from GConf key to preference, so
+   * enforce this */
+
+  if (key_is_used (preferences_enum, sizeof(MetaEnumPreference), new_key) ||
+      key_is_used (preferences_bool, sizeof(MetaBoolPreference), new_key) ||
+      key_is_used (preferences_string, sizeof(MetaStringPreference), new_key) ||
+      key_is_used (preferences_int, sizeof(MetaIntPreference), new_key))
+    {
+      meta_warning (_("GConf key %s is already in use and can't be used to override %s\n"),
+                    new_key, original_key);
+
+    }
+
+  new_key_copy = g_strdup (new_key);
+
+  search_key = original_key;
+  overridden = NULL;
+
+  for (tmp = overridden_keys; tmp; tmp = tmp->next)
+    {
+      MetaPrefsOverriddenKey *tmp_overridden = tmp->data;
+      if (strcmp (overridden->original_key, original_key) == 0)
+        {
+          overridden = tmp_overridden;
+          search_key = tmp_overridden->new_key;
+        }
+    }
+
+  found =
+    do_override (preferences_enum, sizeof(MetaEnumPreference), search_key, new_key_copy) ||
+    do_override (preferences_bool, sizeof(MetaBoolPreference), search_key, new_key_copy) ||
+    do_override (preferences_string, sizeof(MetaStringPreference), search_key, new_key_copy) ||
+    do_override (preferences_int, sizeof(MetaIntPreference), search_key, new_key_copy);
+  if (found)
+    {
+      if (overridden)
+        {
+          g_free (overridden->new_key);
+          overridden->new_key = new_key_copy;
+        }
+      else
+        {
+          overridden = g_slice_new (MetaPrefsOverriddenKey);
+          overridden->original_key = g_strdup (original_key);
+          overridden->new_key = new_key_copy;
+        }
+
+#ifdef HAVE_GCONF
+      if (default_client != NULL)
+        {
+          /* We're already initialized, so notify of a change */
+
+          GConfValue *value;
+          GError *err = NULL;
+
+          value = gconf_client_get (default_client, new_key, &err);
+          cleanup_error (&err);
+
+          notify_new_value (new_key, value);
+
+          if (value)
+            gconf_value_free (value);
+        }
+#endif /* HAVE_GCONF */
+    }
+  else
+    {
+      meta_warning (_("Can't override GConf key, %s not found\n"), original_key);
+      g_free (new_key_copy);
+    }
+}
+
 
 /****************************************************************************/
 /* Updates.                                                                 */
@@ -1103,6 +1279,23 @@ gboolean (*preference_update_handler[]) (const gchar*, GConfValue*) = {
 };
 
 static void
+notify_new_value (const char *key,
+                  GConfValue *value)
+{
+  int i = 0;
+
+  /* FIXME: Use MetaGenericPreference and save a bit of code duplication */
+
+  while (preference_update_handler[i] != NULL)
+    {
+      if (preference_update_handler[i] (key, value))
+        return;
+
+      i++;
+    }
+}
+
+static void
 change_notify (GConfClient    *client,
                guint           cnxn_id,
                GConfEntry     *entry,
@@ -1110,25 +1303,13 @@ change_notify (GConfClient    *client,
 {
   const char *key;
   GConfValue *value;
-  gint i=0;
   
   key = gconf_entry_get_key (entry);
   value = gconf_entry_get_value (entry);
 
   /* First, search for a handler that might know what to do. */
 
-  /* FIXME: When this is all working, since the first item in every
-   * array is the gchar* of the key, there's no reason we can't
-   * find the correct record for that key here and save code duplication.
-   */
-
-  while (preference_update_handler[i]!=NULL)
-    {
-      if (preference_update_handler[i] (key, value))
-        goto out; /* Get rid of this eventually */
-
-      i++;
-    }
+  notify_new_value (key, value);
   
   if (g_str_has_prefix (key, KEY_WINDOW_BINDINGS_PREFIX) ||
       g_str_has_prefix (key, KEY_SCREEN_BINDINGS_PREFIX))
@@ -1146,7 +1327,7 @@ change_notify (GConfClient    *client,
 
           list = value ? gconf_value_get_list (value) : NULL;
 
-          if (update_key_list_binding (key, list))
+          if (update_key_list_binding (key, list, META_LIST_OF_GCONFVALUE_STRINGS))
             queue_changed (META_PREF_KEYBINDINGS);
         }
       else
@@ -1800,6 +1981,9 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_RESIZE_WITH_RIGHT_BUTTON:
       return "RESIZE_WITH_RIGHT_BUTTON";
 
+    case META_PREF_FORCE_FULLSCREEN:
+      return "FORCE_FULLSCREEN";
+
     case META_PREF_CLUTTER_PLUGINS:
       return "CLUTTER_PLUGINS";
 
@@ -1888,56 +2072,63 @@ init_special_bindings (void)
 static void
 init_bindings (void)
 {
-#ifdef HAVE_GCONF  
-  int i = 0;
-  GError *err;
+#ifdef HAVE_GCONF
+  const char *prefix[] = {
+    KEY_WINDOW_BINDINGS_PREFIX,
+    KEY_SCREEN_BINDINGS_PREFIX,
+    NULL
+  };
+  int i;
+  GSList *list, *l, *list_val;
+  const char *str_val;
+  const char *key;
+  GConfEntry *entry;
+  GConfValue *value;
+  GHashTable *to_update;
 
+  to_update = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+
+  for (i = 0; prefix[i]; i++)
+    {
+      list = gconf_client_all_entries (default_client, prefix[i], NULL);
+      for (l = list; l; l = l->next)
+        {
+          entry = l->data;
+          key = gconf_entry_get_key (entry);
+          value = gconf_entry_get_value (entry);
+          if (g_str_has_suffix (key, KEY_LIST_BINDINGS_SUFFIX))
+            {
+              /* List bindings are used in addition to the normal bindings and never
+               * have defaults, so we just go ahead and set them immediately; there
+               * will be only a few of them, so don't worry about the linear scan
+               * in find_and_update_list_binding.
+               */
+              list_val = gconf_client_get_list (default_client, key, GCONF_VALUE_STRING, NULL);
+ 
+              update_key_list_binding (key, list_val, META_LIST_OF_STRINGS);
+              g_slist_foreach (list_val, (GFunc)g_free, NULL);
+              g_slist_free (list_val);
+            }
+          else
+            {
+              str_val = gconf_value_get_string (value);
+              g_hash_table_insert (to_update, binding_name (key), g_strdup (str_val));
+            }
+          gconf_entry_free (entry);
+        }
+      g_slist_free (list);
+    }
+
+  i = 0;
   while (key_bindings[i].name)
     {
-      GSList *list_val, *tmp;
-      char *str_val;
-      char *key;
- 
-      key = g_strconcat (key_bindings[i].per_window?
-                         KEY_WINDOW_BINDINGS_PREFIX:
-                         KEY_SCREEN_BINDINGS_PREFIX,
-                         "/",
-                         key_bindings[i].name, NULL);
- 
-      err = NULL;
-      str_val = gconf_client_get_string (default_client, key, &err);
-      cleanup_error (&err);
-
-      update_binding (&key_bindings[i], str_val);
-
-      g_free (str_val);      
-      g_free (key);
-
-      key = g_strconcat (key_bindings[i].per_window?
-                         KEY_WINDOW_BINDINGS_PREFIX:
-                         KEY_SCREEN_BINDINGS_PREFIX,
-                         "/",
-                         key_bindings[i].name,
-                         KEY_LIST_BINDINGS_SUFFIX, NULL);
-
-      err = NULL;
-
-      list_val = gconf_client_get_list (default_client, key, GCONF_VALUE_STRING, &err);
-      cleanup_error (&err);
- 
-      update_list_binding (&key_bindings[i], list_val, META_LIST_OF_STRINGS);
-
-      tmp = list_val;
-      while (tmp)
-        {
-          g_free (tmp->data);
-          tmp = tmp->next;
-        }
-      g_slist_free (list_val);
-      g_free (key);
+      update_binding (&key_bindings[i],
+                      g_hash_table_lookup (to_update, key_bindings[i].name));
 
       ++i;
     }
+
+  g_hash_table_destroy (to_update);
 
 #else /* HAVE_GCONF */
   int i = 0;
@@ -1960,28 +2151,23 @@ static void
 init_commands (void)
 {
 #ifdef HAVE_GCONF
-  int i;
-  GError *err;
-  
-  i = 0;
-  while (i < MAX_COMMANDS)
+  GSList *list, *l;
+  const char *str_val;
+  const char *key;
+  GConfEntry *entry;
+  GConfValue *value;
+
+  list = gconf_client_all_entries (default_client, KEY_COMMAND_DIRECTORY, NULL);
+  for (l = list; l; l = l->next)
     {
-      char *str_val;
-      char *key;
-
-      key = meta_prefs_get_gconf_key_for_command (i);
-
-      err = NULL;
-      str_val = gconf_client_get_string (default_client, key, &err);
-      cleanup_error (&err);
-
+      entry = l->data;
+      key = gconf_entry_get_key (entry);
+      value = gconf_entry_get_value (entry);
+      str_val = gconf_value_get_string (value);
       update_command (key, str_val);
-
-      g_free (str_val);    
-      g_free (key);
-
-      ++i;
+      gconf_entry_free (entry);
     }
+  g_slist_free (list);
 #else
   int i;
   for (i = 0; i < MAX_COMMANDS; i++)
@@ -1992,39 +2178,34 @@ init_commands (void)
 static void
 init_workspace_names (void)
 {
+  int i;
+
 #ifdef HAVE_GCONF
-  int i;
-  GError *err;
-  
-  i = 0;
-  while (i < MAX_REASONABLE_WORKSPACES)
+  GSList *list, *l;
+  const char *str_val;
+  const char *key;
+  GConfEntry *entry;
+  GConfValue *value;
+
+  list = gconf_client_all_entries (default_client, KEY_WORKSPACE_NAME_DIRECTORY, NULL);
+  for (l = list; l; l = l->next)
     {
-      char *str_val;
-      char *key;
-
-      key = gconf_key_for_workspace_name (i);
-
-      err = NULL;
-      str_val = gconf_client_get_string (default_client, key, &err);
-      cleanup_error (&err);
-
+      entry = l->data;
+      key = gconf_entry_get_key (entry);
+      value = gconf_entry_get_value (entry);
+      str_val = gconf_value_get_string (value);
       update_workspace_name (key, str_val);
-
-      g_assert (workspace_names[i] != NULL);
-      
-      g_free (str_val);    
-      g_free (key);
-
-      ++i;
+      gconf_entry_free (entry);
     }
-#else
-  int i;
+  g_slist_free (list);
+#endif /* HAVE_GCONF */
+
   for (i = 0; i < MAX_REASONABLE_WORKSPACES; i++)
-    workspace_names[i] = g_strdup_printf (_("Workspace %d"), i + 1);
+    if (workspace_names[i] == NULL)
+      workspace_names[i] = g_strdup_printf (_("Workspace %d"), i + 1);
 
   meta_topic (META_DEBUG_PREFS,
               "Initialized workspace names\n");
-#endif /* HAVE_GCONF */
 }
 
 static gboolean
@@ -2275,16 +2456,22 @@ update_list_binding (MetaKeyPref *binding,
   return changed;
 }
 
-static const gchar*
-relative_key (const gchar* key)
+static char *
+binding_name (const char *gconf_key)
 {
-  const gchar* end;
-  
-  end = strrchr (key, '/');
+  const char *start, *end;
 
-  ++end;
+  if (*gconf_key == '/')
+    start = strrchr (gconf_key, '/') + 1;
+  else
+    start = gconf_key;
 
-  return end;
+  if (g_str_has_suffix (gconf_key, KEY_LIST_BINDINGS_SUFFIX))
+    end = gconf_key + strlen(gconf_key) - strlen (KEY_LIST_BINDINGS_SUFFIX);
+  else
+    end = gconf_key + strlen(gconf_key);
+
+  return g_strndup (start, end - start);
 }
 
 /* Return value is TRUE if a preference changed and we need to
@@ -2292,21 +2479,18 @@ relative_key (const gchar* key)
  */
 static gboolean
 find_and_update_binding (MetaKeyPref *bindings, 
-                         const char  *name,
+                         const char  *key,
                          const char  *value)
 {
-  const char *key;
+  char *name = binding_name (key);
   int i;
-  
-  if (*name == '/')
-    key = relative_key (name);
-  else
-    key = name;
 
   i = 0;
   while (bindings[i].name &&
-         strcmp (key, bindings[i].name) != 0)
+         strcmp (name, bindings[i].name) != 0)
     ++i;
+
+  g_free (name);
 
   if (bindings[i].name)
     return update_binding (&bindings[i], value);
@@ -2315,46 +2499,40 @@ find_and_update_binding (MetaKeyPref *bindings,
 }
 
 static gboolean
-update_key_binding (const char *name,
-                       const char *value)
+update_key_binding (const char *key,
+                    const char *value)
 {
-  return find_and_update_binding (key_bindings, name, value);
+  return find_and_update_binding (key_bindings, key, value);
 }
 
 static gboolean
-find_and_update_list_binding (MetaKeyPref *bindings,
-                              const char  *name,
-                              GSList      *value)
+find_and_update_list_binding (MetaKeyPref       *bindings,
+                              const char        *key,
+                              GSList            *value,
+                              MetaStringListType type_of_value)
 {
-  const char *key;
+  char *name = binding_name (key);
   int i;
-  gchar *name_without_suffix = g_strdup(name);
-
-  name_without_suffix[strlen(name_without_suffix) - strlen(KEY_LIST_BINDINGS_SUFFIX)] = 0;
-
-  if (*name_without_suffix == '/')
-    key = relative_key (name_without_suffix);
-  else
-    key = name_without_suffix;
 
   i = 0;
   while (bindings[i].name &&
-         strcmp (key, bindings[i].name) != 0)
+         strcmp (name, bindings[i].name) != 0)
     ++i;
 
-  g_free (name_without_suffix);
+  g_free (name);
 
   if (bindings[i].name)
-    return update_list_binding (&bindings[i], value, META_LIST_OF_GCONFVALUE_STRINGS);
+    return update_list_binding (&bindings[i], value, type_of_value);
   else
     return FALSE;
 }
 
 static gboolean
-update_key_list_binding (const char *name,
-                            GSList *value)
+update_key_list_binding (const char        *key,
+                         GSList            *value,
+                         MetaStringListType type_of_value)
 {
-  return find_and_update_list_binding (key_bindings, name, value);
+  return find_and_update_list_binding (key_bindings, key, value, type_of_value);
 }
 
 static gboolean
@@ -2792,6 +2970,12 @@ meta_prefs_get_mouse_button_menu (void)
   return resize_with_right_button ? 2: 3;
 }
 
+gboolean
+meta_prefs_get_force_fullscreen (void)
+{
+  return force_fullscreen;
+}
+
 void
 meta_prefs_set_compositing_manager (gboolean whether)
 {
@@ -2823,6 +3007,7 @@ meta_prefs_get_clutter_plugins (void)
 void
 meta_prefs_set_clutter_plugins (GSList *list)
 {
+#ifdef HAVE_GCONF
   GError *err = NULL;
 
   gconf_client_set_list (default_client,
@@ -2837,6 +3022,7 @@ meta_prefs_set_clutter_plugins (GSList *list)
                     err->message);
       g_error_free (err);
     }
+#endif
 }
 
 void
@@ -2957,3 +3143,10 @@ init_button_layout(void)
 };
 
 #endif
+
+void
+meta_prefs_set_force_fullscreen (gboolean whether)
+{
+  force_fullscreen = whether;
+}
+
