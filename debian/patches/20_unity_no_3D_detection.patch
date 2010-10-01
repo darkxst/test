@@ -1,7 +1,7 @@
 Index: mutter-2.31.5/src/core/main.c
 ===================================================================
 --- mutter-2.31.5.orig/src/core/main.c	2010-04-18 02:44:38.000000000 +0200
-+++ mutter-2.31.5/src/core/main.c	2010-09-27 20:26:16.874972000 +0200
++++ mutter-2.31.5/src/core/main.c	2010-10-01 11:29:08.614143001 +0200
 @@ -54,8 +54,11 @@
  #include "prefs.h"
  #include "compositor.h"
@@ -31,7 +31,7 @@ Index: mutter-2.31.5/src/core/main.c
  #ifdef HAVE_INTROSPECTION
  #include <girepository.h>
  #include "compositor/mutter-plugin-manager.h"
-@@ -469,6 +479,195 @@
+@@ -469,6 +479,200 @@
    return FALSE;
  }
  
@@ -120,6 +120,10 @@ Index: mutter-2.31.5/src/core/main.c
 +{
 +  GtkWidget* dialog_warn_logout;
 +  gint response;
++  gchar* prompt_message;
++  prompt_message = g_strconcat (_("You will need to choose the Ubuntu Desktop session once you select your user name."), "\n",
++                                _("If you are on Ubuntu live CD, the username is \"ubuntu\" and you have to enter a blank password."),
++                                NULL);
 +
 +  dialog_warn_logout = gtk_message_dialog_new (NULL,
 +                                               GTK_DIALOG_MODAL,
@@ -127,9 +131,10 @@ Index: mutter-2.31.5/src/core/main.c
 +                                               GTK_BUTTONS_OK,
 +                                               _("No required driver detected for unity."));
 +  gtk_message_dialog_format_secondary_markup (GTK_MESSAGE_DIALOG(dialog_warn_logout),
-+                                              _("You will need to choose the Ubuntu Desktop session once you select your user name."));
++                                              "%s", prompt_message);
 +  response = gtk_dialog_run (GTK_DIALOG(dialog_warn_logout));
 +  gtk_widget_destroy (dialog_warn_logout);
++  g_free (prompt_message);
 +
 +  if (response == GTK_RESPONSE_OK || response == GTK_RESPONSE_DELETE_EVENT)
 +    {
@@ -227,7 +232,7 @@ Index: mutter-2.31.5/src/core/main.c
  /**
   * This is where the story begins. It parses commandline options and
   * environment variables, sets up the screen, hands control off to
-@@ -548,6 +747,21 @@
+@@ -548,6 +752,21 @@
    bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
    textdomain (GETTEXT_PACKAGE);
  
@@ -251,8 +256,8 @@ Index: mutter-2.31.5/src/core/main.c
  
 Index: mutter-2.31.5/configure.in
 ===================================================================
---- mutter-2.31.5.orig/configure.in	2010-09-27 20:26:12.222972000 +0200
-+++ mutter-2.31.5/configure.in	2010-09-27 20:26:12.470972000 +0200
+--- mutter-2.31.5.orig/configure.in	2010-10-01 11:29:02.142143000 +0200
++++ mutter-2.31.5/configure.in	2010-10-01 11:29:02.362143000 +0200
 @@ -145,7 +145,7 @@
         ;;
  esac
