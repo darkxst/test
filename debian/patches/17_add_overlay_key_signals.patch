@@ -1,0 +1,84 @@
+diff -rupb mutter-2.31.5//src/core/display.c mutter-2.31.5-keysym-patch//src/core/display.c
+--- mutter-2.31.5//src/core/display.c2010-06-10 21:12:15.000000000 +0100
++++ mutter-2.31.5-keysym-patch//src/core/display.c 2010-08-12 11:46:43.762909996 +0100
+@@ -131,6 +131,9 @@ G_DEFINE_TYPE(MetaDisplay, meta_display,
+ enum
+ {
+   OVERLAY_KEY,
++  OVERLAY_KEY_DOWN,
++  OVERLAY_KEY_WITH_MODIFIER,
++  OVERLAY_KEY_WITH_MODIFIER_DOWN,
+   FOCUS_WINDOW,
+   WINDOW_CREATED,
+   WINDOW_DEMANDS_ATTENTION,
+@@ -234,6 +237,33 @@ meta_display_class_init (MetaDisplayClas
+                   g_cclosure_marshal_VOID__VOID,
+                   G_TYPE_NONE, 0);
+ 
++  display_signals[OVERLAY_KEY_DOWN] =
++    g_signal_new ("overlay-key-down",
++                  G_TYPE_FROM_CLASS (klass),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL,
++                  g_cclosure_marshal_VOID__VOID,
++                  G_TYPE_NONE, 0);
++
++  display_signals[OVERLAY_KEY_WITH_MODIFIER] =
++    g_signal_new ("overlay-key-with-modifier",
++                  G_TYPE_FROM_CLASS (klass),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL,
++                  g_cclosure_marshal_VOID__UINT,
++                  G_TYPE_NONE, 1, G_TYPE_UINT);
++
++  display_signals[OVERLAY_KEY_WITH_MODIFIER_DOWN] =
++    g_signal_new ("overlay-key-with-modifier-down",
++                  G_TYPE_FROM_CLASS (klass),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL,
++                  g_cclosure_marshal_VOID__UINT,
++                  G_TYPE_NONE, 1, G_TYPE_UINT);
++
+   display_signals[WINDOW_CREATED] =
+     g_signal_new ("window-created",
+                   G_TYPE_FROM_CLASS (klass),
+diff -rupb mutter-2.31.5//src/core/keybindings.c mutter-2.31.5-keysym-patch//src/core/keybindings.c
+--- mutter-2.31.5//src/core/keybindings.c2010-04-18 01:44:38.000000000 +0100
++++ mutter-2.31.5-keysym-patch//src/core/keybindings.c 2010-08-12 12:35:55.142909998 +0100
+@@ -1207,13 +1207,33 @@ process_overlay_key (MetaDisplay *displa
+ {
+   if (event->xkey.keycode != display->overlay_key_combo.keycode)
+     {
++      if (display->overlay_key_only_pressed == TRUE)
++        {
++          // emit signal
++          if (event->xkey.type == KeyPress)
++            {
++              g_signal_emit_by_name (display, "overlay-key-with-modifier-down",
++                                     event->xkey.keycode);
+       display->overlay_key_only_pressed = FALSE;
++            }
++        }
++      else
++        {
++          if (event->xkey.type == KeyRelease)
++            {
++              g_signal_emit_by_name (display, "overlay-key-with-modifier",
++                                     event->xkey.keycode);
++              display->overlay_key_only_pressed = TRUE;
++            }
++        }
++
+       return FALSE;
+     }
+ 
+   if (event->xkey.type == KeyPress)
+     {
+       display->overlay_key_only_pressed = TRUE;
++      g_signal_emit_by_name (display, "overlay-key-down", NULL);
+     }
+   else if (event->xkey.type == KeyRelease && display->overlay_key_only_pressed)
+     {

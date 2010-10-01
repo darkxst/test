@@ -45,6 +45,7 @@
 #include "mutter-enum-types.h"
 
 #include <X11/Xatom.h>
+#include <X11/Xlibint.h> /* For display->resource_mask */
 #include <string.h>
 
 #ifdef HAVE_SHAPE
@@ -71,6 +72,9 @@ static gboolean process_property_notify   (MetaWindow     *window,
                                            XPropertyEvent *event);
 static void     meta_window_show          (MetaWindow     *window);
 static void     meta_window_hide          (MetaWindow     *window);
+
+static gboolean meta_window_same_client (MetaWindow *window,
+                                         MetaWindow *other_window);
 
 static void     meta_window_save_rect         (MetaWindow    *window);
 static void     save_user_window_placement    (MetaWindow    *window);
@@ -137,10 +141,13 @@ enum {
   PROP_MINI_ICON,
   PROP_DECORATED,
   PROP_FULLSCREEN,
+  PROP_MAXIMIZED_HORIZONTALLY,
+  PROP_MAXIMIZED_VERTICALLY,
   PROP_WINDOW_TYPE,
   PROP_USER_TIME,
   PROP_DEMANDS_ATTENTION,
-  PROP_URGENT
+  PROP_URGENT,
+  PROP_MUTTER_HINTS
 };
 
 enum
@@ -204,6 +211,12 @@ meta_window_get_property(GObject         *object,
     case PROP_FULLSCREEN:
       g_value_set_boolean (value, win->fullscreen);
       break;
+    case PROP_MAXIMIZED_HORIZONTALLY:
+      g_value_set_boolean (value, win->maximized_horizontally);
+      break;
+    case PROP_MAXIMIZED_VERTICALLY:
+      g_value_set_boolean (value, win->maximized_vertically);
+      break;
     case PROP_WINDOW_TYPE:
       g_value_set_enum (value, win->type);
       break;
@@ -215,6 +228,9 @@ meta_window_get_property(GObject         *object,
       break;
     case PROP_URGENT:
       g_value_set_boolean (value, win->wm_hints_urgent);
+      break;
+    case PROP_MUTTER_HINTS:
+      g_value_set_string (value, win->mutter_hints);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -273,7 +289,7 @@ meta_window_class_init (MetaWindowClass *klass)
                                    PROP_DECORATED,
                                    g_param_spec_boolean ("decorated",
                                                          "Decorated",
-                                                         "Whether windos is decorated",
+                                                         "Whether window is decorated",
                                                          TRUE,
                                                          G_PARAM_READABLE));
 
@@ -281,7 +297,23 @@ meta_window_class_init (MetaWindowClass *klass)
                                    PROP_FULLSCREEN,
                                    g_param_spec_boolean ("fullscreen",
                                                          "Fullscreen",
-                                                         "Whether windos is fullscreened",
+                                                         "Whether window is fullscreened",
+                                                         FALSE,
+                                                         G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_MAXIMIZED_HORIZONTALLY,
+                                   g_param_spec_boolean ("maximized-horizontally",
+                                                         "Maximized horizontally",
+                                                         "Whether window is maximized horizontally",
+                                                         FALSE,
+                                                         G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_MAXIMIZED_VERTICALLY,
+                                   g_param_spec_boolean ("maximized-vertically",
+                                                         "Maximizing vertically",
+                                                         "Whether window is maximized vertically",
                                                          FALSE,
                                                          G_PARAM_READABLE));
 
@@ -320,6 +352,13 @@ meta_window_class_init (MetaWindowClass *klass)
                                                          FALSE,
                                                          G_PARAM_READABLE));
 
+  g_object_class_install_property (object_class,
+                                   PROP_MUTTER_HINTS,
+                                   g_param_spec_string ("mutter-hints",
+                                                        "_MUTTER_HINTS",
+                                                        "Contents of the _MUTTER_HINTS property of this window",
+                                                        NULL,
+                                                        G_PARAM_READABLE));
   window_signals[WORKSPACE_CHANGED] =
     g_signal_new ("workspace-changed",
                   G_TYPE_FROM_CLASS (object_class),
@@ -723,6 +762,7 @@ meta_window_new_with_attrs (MetaDisplay       *display,
   window->maximize_vertically_after_placement = FALSE;
   window->minimize_after_placement = FALSE;
   window->fullscreen = FALSE;
+  window->fullscreen_after_placement = FALSE;
   window->fullscreen_monitors[0] = -1;
   window->require_fully_onscreen = TRUE;
   window->require_on_single_monitor = TRUE;
@@ -746,6 +786,7 @@ meta_window_new_with_attrs (MetaDisplay       *display,
     meta_topic (META_DEBUG_PLACEMENT,
                 "Not placing window 0x%lx since it's already mapped\n",
                 xwindow);
+  window->force_save_user_rect = TRUE;
   window->denied_focus_and_not_transient = FALSE;
   window->unmanaging = FALSE;
   window->is_in_queues = 0;
@@ -1921,8 +1962,10 @@ idle_calc_showing (gpointer data)
   return FALSE;
 }
 
+#ifdef WITH_VERBOSE_MODE
 static const gchar* meta_window_queue_names[NUMBER_OF_QUEUES] =
   {"calc_showing", "move_resize", "update_icon"};
+#endif
 
 static void
 meta_window_unqueue (MetaWindow *window, guint queuebits)
@@ -2185,6 +2228,9 @@ __window_is_terminal (MetaWindow *window)
     return TRUE;
   /* mlterm ("multi lingual terminal emulator on X") */
   else if (strcmp (window->res_class, "mlterm") == 0)
+    return TRUE;
+  /* Terminal -- XFCE Terminal */
+  else if (strcmp (window->res_class, "Terminal") == 0)
     return TRUE;
 
   return FALSE;
@@ -3003,6 +3049,8 @@ meta_window_maximize_internal (MetaWindow        *window,
     window->maximized_horizontally || maximize_horizontally;
   window->maximized_vertically =
     window->maximized_vertically   || maximize_vertically;
+  if (maximize_horizontally || maximize_vertically)
+    window->force_save_user_rect = FALSE;
 
   /* Fix for #336850: If the frame shape isn't reapplied, it is
    * possible that the frame will retains its rounded corners. That
@@ -3014,6 +3062,11 @@ meta_window_maximize_internal (MetaWindow        *window,
 
   recalc_window_features (window);
   set_net_wm_state (window);
+
+  g_object_freeze_notify (G_OBJECT (window));
+  g_object_notify (G_OBJECT (window), "maximized-horizontally");
+  g_object_notify (G_OBJECT (window), "maximized-vertically");
+  g_object_thaw_notify (G_OBJECT (window));
 }
 
 void
@@ -3211,9 +3264,18 @@ meta_window_unmaximize (MetaWindow        *window,
                                    target_rect.height);
         }
 
+      /* Make sure user_rect is current.
+       */
+      force_save_user_window_placement (window);
+
       recalc_window_features (window);
       set_net_wm_state (window);
     }
+
+    g_object_freeze_notify (G_OBJECT (window));
+    g_object_notify (G_OBJECT (window), "maximized-horizontally");
+    g_object_notify (G_OBJECT (window), "maximized-vertically");
+    g_object_thaw_notify (G_OBJECT (window));
 }
 
 void
@@ -3259,6 +3321,7 @@ meta_window_make_fullscreen_internal (MetaWindow  *window)
       meta_window_save_rect (window);
 
       window->fullscreen = TRUE;
+      window->force_save_user_rect = FALSE;
 
       meta_stack_freeze (window->screen->stack);
       meta_window_update_layer (window);
@@ -3313,6 +3376,10 @@ meta_window_unmake_fullscreen (MetaWindow  *window)
                                target_rect.y,
                                target_rect.width,
                                target_rect.height);
+
+      /* Make sure user_rect is current.
+       */
+      force_save_user_window_placement (window);
 
       meta_window_update_layer (window);
 
@@ -4128,7 +4195,7 @@ meta_window_move_resize_internal (MetaWindow          *window,
   if (need_configure_notify)
     send_configure_notify (window);
 
-  if (!window->placed)
+  if (!window->placed && window->force_save_user_rect && !window->fullscreen)
     force_save_user_window_placement (window);
   else if (is_user_action)
     save_user_window_placement (window);
@@ -5156,8 +5223,7 @@ meta_window_configure_request (MetaWindow *window,
     {
       MetaWindow *active_window;
       active_window = window->display->expected_focus_window;
-      if (meta_prefs_get_disable_workarounds () ||
-          !meta_prefs_get_raise_on_click ())
+      if (meta_prefs_get_disable_workarounds ())
         {
           meta_topic (META_DEBUG_STACK,
                       "%s sent an xconfigure stacking request; this is "
@@ -5166,6 +5232,7 @@ meta_window_configure_request (MetaWindow *window,
         }
       else if (active_window &&
                !meta_window_same_application (window, active_window) &&
+               !meta_window_same_client (window, active_window) &&
                XSERVER_TIME_IS_BEFORE (window->net_wm_user_time,
                                        active_window->net_wm_user_time))
         {
@@ -7011,9 +7078,12 @@ menu_callback (MetaWindowMenu *menu,
     {
       meta_verbose ("Menu op %u on %s\n", op, window->desc);
 
-      /* op can be 0 for none */
       switch (op)
         {
+        case META_MENU_OP_NONE:
+          /* nothing */
+          break;
+
         case META_MENU_OP_DELETE:
           meta_window_delete (window, timestamp);
           break;
@@ -7101,10 +7171,6 @@ menu_callback (MetaWindowMenu *menu,
           meta_window_shove_titlebar_onscreen (window);
           break;
 
-        case 0:
-          /* nothing */
-          break;
-
         default:
           meta_warning (G_STRLOC": Unknown window op\n");
           break;
@@ -7157,8 +7223,8 @@ meta_window_show_menu (MetaWindow *window,
       window->display->window_with_menu = NULL;
     }
 
-  ops = 0;
-  insensitive = 0;
+  ops = META_MENU_OP_NONE;
+  insensitive = META_MENU_OP_NONE;
 
   ops |= (META_MENU_OP_DELETE | META_MENU_OP_MINIMIZE | META_MENU_OP_MOVE | META_MENU_OP_RESIZE);
 
@@ -8139,6 +8205,23 @@ meta_window_same_application (MetaWindow *window,
     group==other_group;
 }
 
+/* Generally meta_window_same_application() is a better idea
+ * of "sameness", since it handles the case where multiple apps
+ * want to look like the same app or the same app wants to look
+ * like multiple apps, but in the case of workarounds for legacy
+ * applications (which likely aren't setting the group properly
+ * anyways), it may be desirable to check this as well.
+ */
+static gboolean
+meta_window_same_client (MetaWindow *window,
+                         MetaWindow *other_window)
+{
+  int resource_mask = window->display->xdisplay->resource_mask;
+
+  return ((window->xwindow & ~resource_mask) ==
+          (other_window->xwindow & ~resource_mask));
+}
+
 void
 meta_window_refresh_resize_popup (MetaWindow *window)
 {
@@ -8175,10 +8258,22 @@ meta_window_refresh_resize_popup (MetaWindow *window)
     }
 }
 
+/**
+ * meta_window_foreach_transient:
+ * @window: a #MetaWindow
+ * @func: (scope call): Called for each window which is a transient of @window (transitively)
+ * @user_data: (closure): User data
+ *
+ * Call @func for every window which is either transient for @window, or is
+ * a transient of a window which is in turn transient for @window.
+ * The order of window enumeration is not defined.
+ *
+ * Iteration will stop if @func at any point returns %FALSE.
+ */
 void
 meta_window_foreach_transient (MetaWindow            *window,
                                MetaWindowForeachFunc  func,
-                               void                  *data)
+                               void                  *user_data)
 {
   GSList *windows;
   GSList *tmp;
@@ -8192,7 +8287,7 @@ meta_window_foreach_transient (MetaWindow            *window,
 
       if (meta_window_is_ancestor_of_transient (window, transient))
         {
-          if (!(* func) (transient, data))
+          if (!(* func) (transient, user_data))
             break;
         }
 
@@ -8202,10 +8297,19 @@ meta_window_foreach_transient (MetaWindow            *window,
   g_slist_free (windows);
 }
 
+/**
+ * meta_window_foreach_ancestor:
+ * @window: a #MetaWindow
+ * @func: (scope call): Called for each window which is a transient parent of @window
+ * @user_data: (closure): User data
+ *
+ * If @window is transient, call @func with the window for which it's transient,
+ * repeatedly until either we find a non-transient window, or @func returns %FALSE.
+ */
 void
 meta_window_foreach_ancestor (MetaWindow            *window,
                               MetaWindowForeachFunc  func,
-                              void                  *data)
+                              void                  *user_data)
 {
   MetaWindow *w;
   MetaWindow *tortoise;
@@ -8223,7 +8327,7 @@ meta_window_foreach_ancestor (MetaWindow            *window,
       if (w == NULL || w == tortoise)
         break;
 
-      if (!(* func) (w, data))
+      if (!(* func) (w, user_data))
         break;
 
       if (w->xtransient_for == None ||
@@ -8235,7 +8339,7 @@ meta_window_foreach_ancestor (MetaWindow            *window,
       if (w == NULL || w == tortoise)
         break;
 
-      if (!(* func) (w, data))
+      if (!(* func) (w, user_data))
         break;
 
       tortoise = meta_display_lookup_x_window (tortoise->display,
@@ -8850,8 +8954,8 @@ meta_window_get_description (MetaWindow *window)
 /**
  * meta_window_get_wm_class:
  * @window: a #MetaWindow
- * 
- * Return the current value of the WM_CLASS X property.
+ *
+ * Return the current value of the name part of WM_CLASS X property.
  */
 const char *
 meta_window_get_wm_class (MetaWindow *window)
@@ -8860,6 +8964,21 @@ meta_window_get_wm_class (MetaWindow *window)
     return NULL;
 
   return window->res_class;
+}
+
+/**
+ * meta_window_get_wm_class_instance:
+ * @window: a #MetaWindow
+ *
+ * Return the current value of the instance part of WM_CLASS X property.
+ */
+const char *
+meta_window_get_wm_class_instance (MetaWindow *window)
+{
+  if (!window)
+    return NULL;
+
+  return window->res_name;
 }
 
 /**
@@ -8997,6 +9116,21 @@ meta_window_get_client_machine (MetaWindow *window)
 }
 
 /**
+ * meta_window_is_remote:
+ * @window: a #MetaWindow
+ *
+ * Returns: %TRUE if this window originates from a host
+ * different from the one running mutter.
+ */
+gboolean
+meta_window_is_remote (MetaWindow *window)
+{
+  g_return_val_if_fail (META_IS_WINDOW (window), FALSE);
+
+  return g_strcmp0 (window->wm_client_machine, window->display->hostname) != 0;
+}
+
+/**
  * meta_window_is_modal:
  * @window: a #MetaWindow
  *
@@ -9011,4 +9145,30 @@ meta_window_is_modal (MetaWindow *window)
   g_return_val_if_fail (META_IS_WINDOW (window), FALSE);
 
   return window->wm_state_modal;
+}
+
+/**
+ * meta_window_get_mutter_hints:
+ * @window: a #MetaWindow
+ *
+ * Gets the current value of the _MUTTER_HINTS property.
+ *
+ * The purpose of the hints is to allow fine-tuning of the Window Manager and
+ * Compositor behaviour on per-window basis, and is intended primarily for
+ * hints that are plugin-specific.
+ *
+ * The property is a list of colon-separated key=value pairs. The key names for
+ * any plugin-specific hints must be suitably namespaced to allow for shared
+ * use; 'mutter-' key prefix is reserved for internal use, and must not be used
+ * by plugins.
+ *
+ * Return value: (transfer none): the _MUTTER_HINTS string, or %NULL if no hints
+ * are set.
+ */
+const char *
+meta_window_get_mutter_hints (MetaWindow *window)
+{
+  g_return_val_if_fail (META_IS_WINDOW (window), NULL);
+
+  return window->mutter_hints;
 }

@@ -59,9 +59,10 @@ typedef enum
   META_PREF_CURSOR_SIZE,
   META_PREF_COMPOSITING_MANAGER,
   META_PREF_RESIZE_WITH_RIGHT_BUTTON,
+  META_PREF_FORCE_FULLSCREEN,
   META_PREF_CLUTTER_PLUGINS,
   META_PREF_LIVE_HIDDEN_WINDOWS,
-  META_PREF_NO_TAB_POPUP,
+  META_PREF_NO_TAB_POPUP
 } MetaPreference;
 
 typedef void (* MetaPrefsChangedFunc) (MetaPreference pref,
@@ -73,6 +74,10 @@ void meta_prefs_remove_listener (MetaPrefsChangedFunc func,
                                  gpointer             data);
 
 void meta_prefs_init (void);
+
+void meta_prefs_override_preference_location (const char *original_key,
+                                              const char *new_key);
+
 const char* meta_preference_to_string (MetaPreference pref);
 
 MetaVirtualModifier         meta_prefs_get_mouse_button_mods  (void);
@@ -115,6 +120,7 @@ void        meta_prefs_change_workspace_name (int         i,
 const char* meta_prefs_get_cursor_theme      (void);
 int         meta_prefs_get_cursor_size       (void);
 gboolean    meta_prefs_get_compositing_manager (void);
+gboolean    meta_prefs_get_force_fullscreen  (void);
 
 /**
  * Sets whether the compositor is turned on.
@@ -122,6 +128,8 @@ gboolean    meta_prefs_get_compositing_manager (void);
  * \param whether   TRUE to turn on, FALSE to turn off
  */
 void meta_prefs_set_compositing_manager (gboolean whether);
+
+void meta_prefs_set_force_fullscreen (gboolean whether);
 
 GSList * meta_prefs_get_clutter_plugins (void);
 

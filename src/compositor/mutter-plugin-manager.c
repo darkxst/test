@@ -39,25 +39,26 @@
  */
 static GHashTable *plugin_modules = NULL;
 
+/*
+ * We have one "default plugin manager" that acts for the first screen,
+ * but also can be used before we open any screens, and additional
+ * plugin managers for each screen. (This is ugly. Probably we should
+ * have one plugin manager and only make the plugins per-screen.)
+ */
+
+static MutterPluginManager *default_plugin_manager;
+
 static gboolean mutter_plugin_manager_reload (MutterPluginManager *plugin_mgr);
 
 struct MutterPluginManager
 {
   MetaScreen   *screen;
 
-  GList /* MutterPluginPending */ *pending_plugin_modules; /* Plugins not yet fully loaded */
   GList /* MutterPlugin */       *plugins;  /* TODO -- maybe use hash table */
   GList                          *unload;  /* Plugins that are disabled and pending unload */
 
   guint         idle_unload_id;
 };
-
-typedef struct MutterPluginPending
-{
-  MutterModule *module;
-  char *path;
-  char *params;
-} MutterPluginPending;
 
 /*
  * Checks that the plugin is compatible with the WM and sets up the plugin
@@ -78,7 +79,6 @@ mutter_plugin_load (MutterPluginManager *mgr,
     }
 
   plugin = g_object_new (plugin_type,
-                         "screen", mgr->screen,
                          "params", params,
                          NULL);
 
@@ -270,12 +270,14 @@ mutter_plugin_manager_load (MutterPluginManager *plugin_mgr)
 
               if (use_succeeded)
                 {
-                  MutterPluginPending *pending = g_new0 (MutterPluginPending, 1);
-                  pending->module = module;
-                  pending->path = g_strdup (path);
-                  pending->params = g_strdup (params);
-                  plugin_mgr->pending_plugin_modules =
-                    g_list_prepend (plugin_mgr->pending_plugin_modules, pending);
+                  MutterPlugin *plugin = mutter_plugin_load (plugin_mgr, module, params);
+
+                  if (plugin)
+                    plugin_mgr->plugins = g_list_prepend (plugin_mgr->plugins, plugin);
+                  else
+                    g_warning ("Plugin load for [%s] failed", path);
+
+                  g_type_module_unuse (G_TYPE_MODULE (module));
                 }
             }
           else
@@ -293,7 +295,7 @@ mutter_plugin_manager_load (MutterPluginManager *plugin_mgr)
   if (fallback)
     g_slist_free (fallback);
 
-  if (plugin_mgr->pending_plugin_modules != NULL)
+  if (plugin_mgr->plugins != NULL)
     {
       meta_prefs_add_listener (prefs_changed_callback, plugin_mgr);
       return TRUE;
@@ -307,27 +309,19 @@ mutter_plugin_manager_initialize (MutterPluginManager *plugin_mgr)
 {
   GList *iter;
 
-  for (iter = plugin_mgr->pending_plugin_modules; iter; iter = iter->next)
+  for (iter = plugin_mgr->plugins; iter; iter = iter->next)
     {
-      MutterPluginPending *pending = (MutterPluginPending*) iter->data;
-      MutterPlugin *p;
+      MutterPlugin *plugin = (MutterPlugin*) iter->data;
+      MutterPluginClass *klass = MUTTER_PLUGIN_GET_CLASS (plugin);
 
-      if ((p = mutter_plugin_load (plugin_mgr, pending->module, pending->params)))
-        {
-          plugin_mgr->plugins = g_list_prepend (plugin_mgr->plugins, p);
-        }
-      else
-        {
-          g_warning ("Plugin load for [%s] failed", pending->path);
-        }
+      g_object_set (plugin,
+                    "screen", plugin_mgr->screen,
+                    NULL);
 
-      g_type_module_unuse (G_TYPE_MODULE (pending->module));
-      g_free (pending->path);
-      g_free (pending->params);
-      g_free (pending);
+      if (klass->start)
+        klass->start (plugin);
     }
-  g_list_free (plugin_mgr->pending_plugin_modules);
-  plugin_mgr->pending_plugin_modules = NULL;
+
   return TRUE;
 }
 
@@ -349,7 +343,7 @@ mutter_plugin_manager_reload (MutterPluginManager *plugin_mgr)
   return mutter_plugin_manager_load (plugin_mgr);
 }
 
-MutterPluginManager *
+static MutterPluginManager *
 mutter_plugin_manager_new (MetaScreen *screen)
 {
   MutterPluginManager *plugin_mgr;
@@ -364,13 +358,52 @@ mutter_plugin_manager_new (MetaScreen *screen)
 
   plugin_mgr->screen        = screen;
 
+  if (screen)
+    g_object_set_data (G_OBJECT (screen), "mutter-plugin-manager", plugin_mgr);
+
   return plugin_mgr;
 }
 
+MutterPluginManager *
+mutter_plugin_manager_get_default (void)
+{
+  if (!default_plugin_manager)
+    {
+      default_plugin_manager = mutter_plugin_manager_new (NULL);
+    }
+
+  return default_plugin_manager;
+}
+
+MutterPluginManager *
+mutter_plugin_manager_get (MetaScreen *screen)
+{
+  MutterPluginManager *plugin_mgr;
+
+  plugin_mgr = g_object_get_data (G_OBJECT (screen), "mutter-plugin-manager");
+  if (plugin_mgr)
+    return plugin_mgr;
+
+  if (!default_plugin_manager)
+    mutter_plugin_manager_get_default ();
+
+  if (!default_plugin_manager->screen)
+    {
+      /* The default plugin manager is so far unused, we can recycle it */
+      default_plugin_manager->screen = screen;
+      g_object_set_data (G_OBJECT (screen), "mutter-plugin-manager", default_plugin_manager);
+
+      return default_plugin_manager;
+    }
+  else
+    {
+      return mutter_plugin_manager_new (screen);
+    }
+}
+
 static void
-mutter_plugin_manager_kill_effect (MutterPluginManager *plugin_mgr,
-                                   MutterWindow        *actor,
-                                   unsigned long        events)
+mutter_plugin_manager_kill_window_effects (MutterPluginManager *plugin_mgr,
+                                           MutterWindow        *actor)
 {
   GList *l = plugin_mgr->plugins;
 
@@ -380,17 +413,32 @@ mutter_plugin_manager_kill_effect (MutterPluginManager *plugin_mgr,
       MutterPluginClass   *klass = MUTTER_PLUGIN_GET_CLASS (plugin);
 
       if (!mutter_plugin_disabled (plugin)
-	  && (mutter_plugin_features (plugin) & events)
-	  && klass->kill_effect)
-        klass->kill_effect (plugin, actor, events);
+	  && klass->kill_window_effects)
+        klass->kill_window_effects (plugin, actor);
 
       l = l->next;
     }
 }
 
-#define ALL_BUT_SWITCH \
-  MUTTER_PLUGIN_ALL_EFFECTS & \
-  ~MUTTER_PLUGIN_SWITCH_WORKSPACE
+static void
+mutter_plugin_manager_kill_switch_workspace (MutterPluginManager *plugin_mgr)
+{
+  GList *l = plugin_mgr->plugins;
+
+  while (l)
+    {
+      MutterPlugin        *plugin = l->data;
+      MutterPluginClass   *klass = MUTTER_PLUGIN_GET_CLASS (plugin);
+
+      if (!mutter_plugin_disabled (plugin)
+          && (mutter_plugin_features (plugin) & MUTTER_PLUGIN_SWITCH_WORKSPACE)
+	  && klass->kill_switch_workspace)
+        klass->kill_switch_workspace (plugin);
+
+      l = l->next;
+    }
+}
+
 /*
  * Public method that the compositor hooks into for events that require
  * no additional parameters.
@@ -427,10 +475,9 @@ mutter_plugin_manager_event_simple (MutterPluginManager *plugin_mgr,
             case MUTTER_PLUGIN_MINIMIZE:
               if (klass->minimize)
                 {
-                  mutter_plugin_manager_kill_effect (
+                  mutter_plugin_manager_kill_window_effects (
 		      plugin_mgr,
-		      actor,
-		      ALL_BUT_SWITCH);
+		      actor);
 
                   _mutter_plugin_effect_started (plugin);
                   klass->minimize (plugin, actor);
@@ -439,10 +486,9 @@ mutter_plugin_manager_event_simple (MutterPluginManager *plugin_mgr,
             case MUTTER_PLUGIN_MAP:
               if (klass->map)
                 {
-                  mutter_plugin_manager_kill_effect (
+                  mutter_plugin_manager_kill_window_effects (
 		      plugin_mgr,
-		      actor,
-		      ALL_BUT_SWITCH);
+		      actor);
 
                   _mutter_plugin_effect_started (plugin);
                   klass->map (plugin, actor);
@@ -506,10 +552,9 @@ mutter_plugin_manager_event_maximize (MutterPluginManager *plugin_mgr,
             case MUTTER_PLUGIN_MAXIMIZE:
               if (klass->maximize)
                 {
-                  mutter_plugin_manager_kill_effect (
+                  mutter_plugin_manager_kill_window_effects (
 		      plugin_mgr,
-		      actor,
-		      ALL_BUT_SWITCH);
+		      actor);
 
                   _mutter_plugin_effect_started (plugin);
                   klass->maximize (plugin, actor,
@@ -520,10 +565,9 @@ mutter_plugin_manager_event_maximize (MutterPluginManager *plugin_mgr,
             case MUTTER_PLUGIN_UNMAXIMIZE:
               if (klass->unmaximize)
                 {
-                  mutter_plugin_manager_kill_effect (
+                  mutter_plugin_manager_kill_window_effects (
 		      plugin_mgr,
-		      actor,
-		      ALL_BUT_SWITCH);
+		      actor);
 
                   _mutter_plugin_effect_started (plugin);
                   klass->unmaximize (plugin, actor,
@@ -552,7 +596,6 @@ mutter_plugin_manager_event_maximize (MutterPluginManager *plugin_mgr,
  */
 gboolean
 mutter_plugin_manager_switch_workspace (MutterPluginManager *plugin_mgr,
-                                        const GList        **actors,
                                         gint                 from,
                                         gint                 to,
                                         MetaMotionDirection  direction)
@@ -570,19 +613,15 @@ mutter_plugin_manager_switch_workspace (MutterPluginManager *plugin_mgr,
       MutterPluginClass   *klass = MUTTER_PLUGIN_GET_CLASS (plugin);
 
       if (!mutter_plugin_disabled (plugin) &&
-          (mutter_plugin_features (plugin) & MUTTER_PLUGIN_SWITCH_WORKSPACE) &&
-          (actors && *actors))
+          (mutter_plugin_features (plugin) & MUTTER_PLUGIN_SWITCH_WORKSPACE))
         {
           if (klass->switch_workspace)
             {
               retval = TRUE;
-              mutter_plugin_manager_kill_effect (
-		  plugin_mgr,
-		  MUTTER_WINDOW ((*actors)->data),
-		  MUTTER_PLUGIN_SWITCH_WORKSPACE);
+              mutter_plugin_manager_kill_switch_workspace (plugin_mgr);
 
               _mutter_plugin_effect_started (plugin);
-              klass->switch_workspace (plugin, actors, from, to, direction);
+              klass->switch_workspace (plugin, from, to, direction);
             }
         }
 

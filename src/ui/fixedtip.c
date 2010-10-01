@@ -51,9 +51,10 @@ static int screen_right_edge = 0;
 static int screen_bottom_edge = 0;
 
 static gint
-expose_handler (GtkTooltips *tooltips)
+expose_handler (GtkWidget *tooltips)
 {
-  gtk_paint_flat_box (tip->style, tip->window,
+  gtk_paint_flat_box (gtk_widget_get_style (tip),
+                      gtk_widget_get_window (tip),
                       GTK_STATE_NORMAL, GTK_SHADOW_OUT, 
                       NULL, tip, "tooltip",
                       0, 0, -1, -1);
@@ -71,6 +72,8 @@ meta_fixed_tip_show (Display *xdisplay, int screen_number,
   if (tip == NULL)
     {      
       tip = gtk_window_new (GTK_WINDOW_POPUP);
+      gtk_window_set_type_hint (GTK_WINDOW(tip), GDK_WINDOW_TYPE_HINT_TOOLTIP);
+
       {
         GdkScreen *gdk_screen;
 	GdkRectangle monitor;
