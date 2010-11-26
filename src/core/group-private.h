@@ -24,7 +24,7 @@
 #ifndef META_GROUP_PRIVATE_H
 #define META_GROUP_PRIVATE_H
 
-#include <meta/group.h>
+#include "group.h"
 
 struct _MetaGroup
 {

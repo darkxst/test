@@ -25,10 +25,10 @@
 #define _XOPEN_SOURCE /* for kill() */
 
 #include <config.h>
-#include <meta/util.h>
+#include "util.h"
 #include "window-private.h"
-#include <meta/errors.h>
-#include <meta/workspace.h>
+#include "errors.h"
+#include "workspace.h"
 
 #include <sys/types.h>
 #include <sys/wait.h>

@@ -26,8 +26,7 @@
 
 #include <math.h>
 #include <gtk/gtk.h>
-#include <meta/preview-widget.h>
-#include "theme-private.h"
+#include "preview-widget.h"
 
 static void     meta_preview_get_preferred_width  (GtkWidget *widget,
                                                    gint      *minimum,

@@ -1,7 +1,5 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
 
-#include <config.h>
-
 #define _ISOC99_SOURCE /* for roundf */
 #include <math.h>
 
@@ -11,27 +9,18 @@
 #include <X11/extensions/Xrender.h>
 
 #include <clutter/x11/clutter-x11.h>
-#include <gdk/gdk.h> /* for gdk_rectangle_union() */
 
-#include <meta/display.h>
-#include <meta/errors.h>
+#include "display.h"
+#include "errors.h"
 #include "frame.h"
-#include <meta/window.h>
+#include "window.h"
 #include "xprops.h"
 
 #include "compositor-private.h"
-#include "meta-shadow-factory-private.h"
 #include "meta-shaped-texture.h"
 #include "meta-window-actor-private.h"
-
-enum {
-  POSITION_CHANGED,
-  SIZE_CHANGED,
-  LAST_SIGNAL
-};
-
-static guint signals[LAST_SIGNAL] = {0};
-
+#include "shadow.h"
+#include "tidy/tidy-texture-frame.h"
 
 struct _MetaWindowActorPrivate
 {
@@ -42,27 +31,12 @@ struct _MetaWindowActorPrivate
   MetaScreen       *screen;
 
   ClutterActor     *actor;
-
-  /* MetaShadowFactory only caches shadows that are actually in use;
-   * to avoid unnecessary recomputation we do two things: 1) we store
-   * both a focused and unfocused shadow for the window. If the window
-   * doesn't have different focused and unfocused shadow parameters,
-   * these will be the same. 2) when the shadow potentially changes we
-   * don't immediately unreference the old shadow, we just flag it as
-   * dirty and recompute it when we next need it (recompute_focused_shadow,
-   * recompute_unfocused_shadow.) Because of our extraction of
-   * size-invariant window shape, we'll often find that the new shadow
-   * is the same as the old shadow.
-   */
-  MetaShadow       *focused_shadow;
-  MetaShadow       *unfocused_shadow;
-
+  ClutterActor     *shadow;
   Pixmap            back_pixmap;
 
   Damage            damage;
 
   guint8            opacity;
-  guint8            shadow_opacity;
 
   gchar *           desc;
 
@@ -71,15 +45,8 @@ struct _MetaWindowActorPrivate
   /* A rectangular region with the unshaped extends of the window
    * texture */
   cairo_region_t   *bounding_region;
-  /* The region we should clip to when painting the shadow */
-  cairo_region_t   *shadow_clip;
-
-  /* Extracted size-invariant shape used for shadows */
-  MetaWindowShape  *shadow_shape;
 
   gint              freeze_count;
-
-  char *            shadow_class;
 
   /*
    * These need to be counters rather than flags, since more plugins
@@ -103,9 +70,7 @@ struct _MetaWindowActorPrivate
   guint		    received_damage        : 1;
 
   guint		    needs_pixmap           : 1;
-  guint             needs_reshape          : 1;
-  guint             recompute_focused_shadow   : 1;
-  guint             recompute_unfocused_shadow : 1;
+  guint		    needs_reshape          : 1;
   guint		    size_changed           : 1;
 
   guint		    needs_destroy	   : 1;
@@ -122,12 +87,7 @@ enum
   PROP_X_WINDOW,
   PROP_X_WINDOW_ATTRIBUTES,
   PROP_NO_SHADOW,
-  PROP_SHADOW_CLASS
 };
-
-#define DEFAULT_SHADOW_RADIUS 12
-#define DEFAULT_SHADOW_X_OFFSET 0
-#define DEFAULT_SHADOW_Y_OFFSET 8
 
 static void meta_window_actor_dispose    (GObject *object);
 static void meta_window_actor_finalize   (GObject *object);
@@ -141,18 +101,11 @@ static void meta_window_actor_get_property (GObject      *object,
                                             GValue       *value,
                                             GParamSpec   *pspec);
 
-static void meta_window_actor_paint (ClutterActor *actor);
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
-static gboolean meta_window_actor_get_paint_volume (ClutterActor       *actor,
-                                                    ClutterPaintVolume *volume);
-#endif
-
 static void     meta_window_actor_detach     (MetaWindowActor *self);
 static gboolean meta_window_actor_has_shadow (MetaWindowActor *self);
 
 static void meta_window_actor_clear_shape_region    (MetaWindowActor *self);
 static void meta_window_actor_clear_bounding_region (MetaWindowActor *self);
-static void meta_window_actor_clear_shadow_clip     (MetaWindowActor *self);
 
 static gboolean is_shaped                (MetaDisplay  *display,
                                           Window        xwindow);
@@ -208,7 +161,6 @@ static void
 meta_window_actor_class_init (MetaWindowActorClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
-  ClutterActorClass *actor_class = CLUTTER_ACTOR_CLASS (klass);
   GParamSpec   *pspec;
 
   g_type_class_add_private (klass, sizeof (MetaWindowActorPrivate));
@@ -218,11 +170,6 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
   object_class->set_property = meta_window_actor_set_property;
   object_class->get_property = meta_window_actor_get_property;
   object_class->constructed  = meta_window_actor_constructed;
-
-  actor_class->paint = meta_window_actor_paint;
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
-  actor_class->get_paint_volume = meta_window_actor_get_paint_volume;
-#endif
 
   pspec = g_param_spec_object ("meta-window",
                                "MetaWindow",
@@ -269,36 +216,11 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
                                 "No shadow",
                                 "Do not add shaddow to this window",
                                 FALSE,
-                                G_PARAM_READWRITE);
+                                G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
 
   g_object_class_install_property (object_class,
                                    PROP_NO_SHADOW,
                                    pspec);
-
-  pspec = g_param_spec_string ("shadow-class",
-                               "Name of the shadow class for this window.",
-                               "NULL means to use the default shadow class for this window type",
-                               NULL,
-                               G_PARAM_READWRITE);
-
-  g_object_class_install_property (object_class,
-                                   PROP_SHADOW_CLASS,
-                                   pspec);
-
-  signals[POSITION_CHANGED] =
-    g_signal_new ("position-changed",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL,
-                  g_cclosure_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
-  signals[SIZE_CHANGED] =
-    g_signal_new ("size-changed",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL,
-                  g_cclosure_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -310,7 +232,6 @@ meta_window_actor_init (MetaWindowActor *self)
 						   META_TYPE_WINDOW_ACTOR,
 						   MetaWindowActorPrivate);
   priv->opacity = 0xff;
-  priv->shadow_class = NULL;
 }
 
 static void
@@ -325,6 +246,7 @@ window_decorated_notify (MetaWindow *mw,
   MetaDisplay            *display  = meta_screen_get_display (screen);
   Display                *xdisplay = meta_display_get_xdisplay (display);
   Window                  new_xwindow;
+  MetaCompScreen         *info;
   XWindowAttributes       attrs;
 
   /*
@@ -339,6 +261,8 @@ window_decorated_notify (MetaWindow *mw,
     new_xwindow = meta_window_get_xwindow (mw);
 
   meta_window_actor_detach (self);
+
+  info = meta_screen_get_compositor_data (screen);
 
   /*
    * First of all, clean up any resources we are currently using and will
@@ -367,6 +291,18 @@ window_decorated_notify (MetaWindow *mw,
 
   g_object_set (self, "x-window-attributes", &attrs, NULL);
 
+  if (priv->shadow)
+    {
+      ClutterActor *p = clutter_actor_get_parent (priv->shadow);
+
+      if (CLUTTER_IS_CONTAINER (p))
+        clutter_container_remove_actor (CLUTTER_CONTAINER (p), priv->shadow);
+      else
+        clutter_actor_unparent (priv->shadow);
+
+      priv->shadow = NULL;
+    }
+
   /*
    * Recreate the contents.
    */
@@ -383,6 +319,9 @@ meta_window_actor_constructed (GObject *object)
   Window                  xwindow  = priv->xwindow;
   Display                *xdisplay = meta_display_get_xdisplay (display);
   XRenderPictFormat      *format;
+  MetaCompositor         *compositor;
+
+  compositor = meta_display_get_compositor (display);
 
 #ifdef HAVE_SHAPE
   /* Listen for ShapeNotify events on the window */
@@ -404,6 +343,13 @@ meta_window_actor_constructed (GObject *object)
     priv->argb32 = TRUE;
 
   meta_window_actor_update_opacity (self);
+
+  if (meta_window_actor_has_shadow (self))
+    {
+      priv->shadow = meta_create_shadow_frame (compositor);
+
+      clutter_container_add_actor (CLUTTER_CONTAINER (self), priv->shadow);
+    }
 
   if (!priv->actor)
     {
@@ -460,31 +406,6 @@ meta_window_actor_dispose (GObject *object)
 
   meta_window_actor_clear_shape_region (self);
   meta_window_actor_clear_bounding_region (self);
-  meta_window_actor_clear_shadow_clip (self);
-
-  if (priv->shadow_class != NULL)
-    {
-      g_free (priv->shadow_class);
-      priv->shadow_class = NULL;
-    }
-
-  if (priv->focused_shadow != NULL)
-    {
-      meta_shadow_unref (priv->focused_shadow);
-      priv->focused_shadow = NULL;
-    }
-
-  if (priv->unfocused_shadow != NULL)
-    {
-      meta_shadow_unref (priv->unfocused_shadow);
-      priv->unfocused_shadow = NULL;
-    }
-
-  if (priv->shadow_shape != NULL)
-    {
-      meta_window_shape_unref (priv->shadow_shape);
-      priv->shadow_shape = NULL;
-    }
 
   if (priv->damage != None)
     {
@@ -542,27 +463,36 @@ meta_window_actor_set_property (GObject      *object,
       break;
     case PROP_NO_SHADOW:
       {
+        gboolean oldv = priv->no_shadow ? TRUE : FALSE;
         gboolean newv = g_value_get_boolean (value);
 
-        if (newv == priv->no_shadow)
+        if (oldv == newv)
           return;
 
         priv->no_shadow = newv;
 
-        meta_window_actor_invalidate_shadow (self);
-      }
-      break;
-    case PROP_SHADOW_CLASS:
-      {
-        const char *newv = g_value_get_string (value);
+        if (newv && priv->shadow)
+          {
+            clutter_container_remove_actor (CLUTTER_CONTAINER (object),
+                                            priv->shadow);
+            priv->shadow = NULL;
+          }
+        else if (!newv && !priv->shadow && meta_window_actor_has_shadow (self))
+          {
+            gfloat       w, h;
+            MetaDisplay *display = meta_screen_get_display (priv->screen);
+            MetaCompositor *compositor;
 
-        if (g_strcmp0 (newv, priv->shadow_class) == 0)
-          return;
+            compositor = meta_display_get_compositor (display);
 
-        g_free (priv->shadow_class);
-        priv->shadow_class = g_strdup (newv);
+            clutter_actor_get_size (CLUTTER_ACTOR (self), &w, &h);
 
-        meta_window_actor_invalidate_shadow (self);
+            priv->shadow = meta_create_shadow_frame (compositor);
+
+            clutter_actor_set_size (priv->shadow, w, h);
+
+            clutter_container_add_actor (CLUTTER_CONTAINER (self), priv->shadow);
+          }
       }
       break;
     default:
@@ -596,165 +526,11 @@ meta_window_actor_get_property (GObject      *object,
     case PROP_NO_SHADOW:
       g_value_set_boolean (value, priv->no_shadow);
       break;
-    case PROP_SHADOW_CLASS:
-      g_value_set_string (value, priv->shadow_class);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
 }
-
-static const char *
-meta_window_actor_get_shadow_class (MetaWindowActor *self)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-
-  if (priv->shadow_class != NULL)
-    return priv->shadow_class;
-  else
-    {
-      MetaWindowType window_type = meta_window_get_window_type (priv->window);
-
-      switch (window_type)
-        {
-        case META_WINDOW_DROPDOWN_MENU:
-          return "dropdown-menu";
-        case META_WINDOW_POPUP_MENU:
-          return "popup-menu";
-        default:
-          {
-            MetaFrameType frame_type = meta_window_get_frame_type (priv->window);
-            return meta_frame_type_to_string (frame_type);
-          }
-        }
-    }
-}
-
-static void
-meta_window_actor_get_shadow_params (MetaWindowActor  *self,
-                                     gboolean          appears_focused,
-                                     MetaShadowParams *params)
-{
-  const char *shadow_class = meta_window_actor_get_shadow_class (self);
-
-  meta_shadow_factory_get_params (meta_shadow_factory_get_default (),
-                                  shadow_class, appears_focused,
-                                  params);
-}
-
-static void
-meta_window_actor_get_shape_bounds (MetaWindowActor       *self,
-                                    cairo_rectangle_int_t *bounds)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-
-  /* We need to be defensive here because there are corner cases
-   * where getting the shape fails on a window being destroyed
-   * and similar.
-   */
-  if (priv->shaped && priv->shape_region)
-    cairo_region_get_extents (priv->shape_region, bounds);
-  else if (priv->bounding_region)
-    cairo_region_get_extents (priv->bounding_region, bounds);
-  else
-    bounds->x = bounds->y = bounds->width = bounds->height = 0;
-}
-
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
-static void
-meta_window_actor_get_shadow_bounds (MetaWindowActor       *self,
-                                     gboolean               appears_focused,
-                                     cairo_rectangle_int_t *bounds)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-  MetaShadow *shadow = appears_focused ? priv->focused_shadow : priv->unfocused_shadow;
-  cairo_rectangle_int_t shape_bounds;
-  MetaShadowParams params;
-
-  meta_window_actor_get_shape_bounds (self, &shape_bounds);
-  meta_window_actor_get_shadow_params (self, appears_focused, &params);
-
-  meta_shadow_get_bounds (shadow,
-                          params.x_offset + shape_bounds.x,
-                          params.y_offset + shape_bounds.y,
-                          shape_bounds.width,
-                          shape_bounds.height,
-                          bounds);
-}
-#endif
-
-static void
-meta_window_actor_paint (ClutterActor *actor)
-{
-  MetaWindowActor *self = META_WINDOW_ACTOR (actor);
-  MetaWindowActorPrivate *priv = self->priv;
-  gboolean appears_focused = meta_window_appears_focused (priv->window);
-  MetaShadow *shadow = appears_focused ? priv->focused_shadow : priv->unfocused_shadow;
-
-  if (shadow != NULL)
-    {
-      MetaShadowParams params;
-      cairo_rectangle_int_t shape_bounds;
-
-      meta_window_actor_get_shape_bounds (self, &shape_bounds);
-      meta_window_actor_get_shadow_params (self, appears_focused, &params);
-
-      meta_shadow_paint (shadow,
-                         params.x_offset + shape_bounds.x,
-                         params.y_offset + shape_bounds.y,
-                         shape_bounds.width,
-                         shape_bounds.height,
-                         (clutter_actor_get_paint_opacity (actor) * params.opacity) / 255,
-                         priv->shadow_clip);
-    }
-
-  CLUTTER_ACTOR_CLASS (meta_window_actor_parent_class)->paint (actor);
-}
-
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
-static gboolean
-meta_window_actor_get_paint_volume (ClutterActor       *actor,
-                                    ClutterPaintVolume *volume)
-{
-  MetaWindowActor *self = META_WINDOW_ACTOR (actor);
-  MetaWindowActorPrivate *priv = self->priv;
-  cairo_rectangle_int_t bounds;
-  gboolean appears_focused = meta_window_appears_focused (priv->window);
-  ClutterVertex origin;
-
-  /* The paint volume is computed before paint functions are called
-   * so our bounds might not be updated yet. Force an update. */
-  meta_window_actor_pre_paint (self);
-
-  meta_window_actor_get_shape_bounds (self, &bounds);
-
-  if (appears_focused ? priv->focused_shadow : priv->unfocused_shadow)
-    {
-      cairo_rectangle_int_t shadow_bounds;
-
-      /* We could compute an full clip region as we do for the window
-       * texture, but the shadow is relatively cheap to draw, and
-       * a little more complex to clip, so we just catch the case where
-       * the shadow is completely obscured and doesn't need to be drawn
-       * at all.
-       */
-
-      meta_window_actor_get_shadow_bounds (self, appears_focused, &shadow_bounds);
-      gdk_rectangle_union (&bounds, &shadow_bounds, &bounds);
-    }
-
-  origin.x = bounds.x;
-  origin.y = bounds.y;
-  origin.z = 0.0f;
-  clutter_paint_volume_set_origin (volume, &origin);
-
-  clutter_paint_volume_set_width (volume, bounds.width);
-  clutter_paint_volume_set_height (volume, bounds.height);
-
-  return TRUE;
-}
-#endif /* CLUTTER_CHECK_VERSION */
 
 static gboolean
 is_shaped (MetaDisplay *display, Window xwindow)
@@ -784,16 +560,10 @@ meta_window_actor_has_shadow (MetaWindowActor *self)
   if (priv->no_shadow)
     return FALSE;
 
-  /* Leaving out shadows for maximized and fullscreen windows is an effeciency
-   * win and also prevents the unsightly effect of the shadow of maximized
-   * window appearing on an adjacent window */
-  if ((meta_window_get_maximized (priv->window) == (META_MAXIMIZE_HORIZONTAL | META_MAXIMIZE_VERTICAL)) ||
-      meta_window_is_fullscreen (priv->window))
-    return FALSE;
-
   /*
    * Always put a shadow around windows with a frame - This should override
-   * the restriction about not putting a shadow around ARGB windows.
+   * the restriction about not putting a shadow around shaped windows
+   * as the frame might be the reason the window is shaped
    */
   if (priv->window)
     {
@@ -806,8 +576,7 @@ meta_window_actor_has_shadow (MetaWindowActor *self)
     }
 
   /*
-   * Do not add shadows to ARGB windows; eventually we should generate a
-   * shadow from the input shape for such windows.
+   * Do not add shadows to ARGB windows (since they are probably transparent)
    */
   if (priv->argb32 || priv->opacity != 0xff)
     {
@@ -817,7 +586,18 @@ meta_window_actor_has_shadow (MetaWindowActor *self)
     }
 
   /*
+   * Never put a shadow around shaped windows
+   */
+  if (priv->shaped)
+    {
+      meta_verbose ("Window 0x%x has no shadow as it is shaped\n",
+		    (guint)priv->xwindow);
+      return FALSE;
+    }
+
+  /*
    * Add shadows to override redirect windows (e.g., Gtk menus).
+   * This must have lower priority than window shape test.
    */
   if (priv->attrs.override_redirect)
     {
@@ -899,19 +679,6 @@ ClutterActor *
 meta_window_actor_get_texture (MetaWindowActor *self)
 {
   return self->priv->actor;
-}
-
-/**
- * meta_window_actor_is_destroyed:
- *
- * Gets whether the X window that the actor was displaying has been destroyed
- *
- * Return value: %TRUE when the window is destroyed, otherwise %FALSE
- */
-gboolean
-meta_window_actor_is_destroyed (MetaWindowActor *self)
-{
-  return self->priv->disposed;
 }
 
 gboolean
@@ -1340,8 +1107,6 @@ meta_window_actor_sync_actor_position (MetaWindowActor *self)
                               window_rect.x, window_rect.y);
   clutter_actor_set_size (CLUTTER_ACTOR (self),
                           window_rect.width, window_rect.height);
-
-  g_signal_emit (self, signals[POSITION_CHANGED], 0);
 }
 
 void
@@ -1594,18 +1359,6 @@ meta_window_actor_clear_bounding_region (MetaWindowActor *self)
 }
 
 static void
-meta_window_actor_clear_shadow_clip (MetaWindowActor *self)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-
-  if (priv->shadow_clip)
-    {
-      cairo_region_destroy (priv->shadow_clip);
-      priv->shadow_clip = NULL;
-    }
-}
-
-static void
 meta_window_actor_update_bounding_region (MetaWindowActor *self,
                                           int              width,
                                           int              height)
@@ -1613,28 +1366,9 @@ meta_window_actor_update_bounding_region (MetaWindowActor *self,
   MetaWindowActorPrivate *priv = self->priv;
   cairo_rectangle_int_t bounding_rectangle = { 0, 0, width, height };
 
-  if (priv->bounding_region != NULL)
-    {
-      cairo_rectangle_int_t old_bounding_rectangle;
-      cairo_region_get_extents (priv->bounding_region, &old_bounding_rectangle);
-
-      if (old_bounding_rectangle.width == width && old_bounding_rectangle.height == height)
-        return;
-    }
-
   meta_window_actor_clear_bounding_region (self);
 
   priv->bounding_region = cairo_region_create_rectangle (&bounding_rectangle);
-
-  /* When we're shaped, we use the shape region to generate the shadow; the shape
-   * region only changes when we get ShapeNotify event; but for unshaped windows
-   * we generate the shadow from the bounding region, so we need to recompute
-   * the shadow when the size changes.
-   */
-  if (!priv->shaped)
-    meta_window_actor_invalidate_shadow (self);
-
-  g_signal_emit (self, signals[SIZE_CHANGED], 0);
 }
 
 static void
@@ -1763,12 +1497,30 @@ meta_window_actor_set_visible_region_beneath (MetaWindowActor *self,
                                               cairo_region_t  *beneath_region)
 {
   MetaWindowActorPrivate *priv = self->priv;
-  gboolean appears_focused = meta_window_appears_focused (priv->window);
 
-  if (appears_focused ? priv->focused_shadow : priv->unfocused_shadow)
+  if (priv->shadow)
     {
-      meta_window_actor_clear_shadow_clip (self);
-      priv->shadow_clip = cairo_region_copy (beneath_region);
+      cairo_rectangle_int_t shadow_rect;
+      ClutterActorBox box;
+      cairo_region_overlap_t overlap;
+
+      /* We could compute an full clip region as we do for the window
+       * texture, but the shadow is relatively cheap to draw, and
+       * a little more complex to clip, so we just catch the case where
+       * the shadow is completely obscured and doesn't need to be drawn
+       * at all.
+       */
+      clutter_actor_get_allocation_box (priv->shadow, &box);
+
+      shadow_rect.x = roundf (box.x1);
+      shadow_rect.y = roundf (box.y1);
+      shadow_rect.width = roundf (box.x2 - box.x1);
+      shadow_rect.height = roundf (box.y2 - box.y1);
+
+      overlap = cairo_region_contains_rectangle (beneath_region, &shadow_rect);
+
+      tidy_texture_frame_set_needs_paint (TIDY_TEXTURE_FRAME (priv->shadow),
+                                          overlap != CAIRO_REGION_OVERLAP_OUT);
     }
 }
 
@@ -1786,7 +1538,8 @@ meta_window_actor_reset_visible_regions (MetaWindowActor *self)
 
   meta_shaped_texture_set_clip_region (META_SHAPED_TEXTURE (priv->actor),
                                        NULL);
-  meta_window_actor_clear_shadow_clip (self);
+  if (priv->shadow)
+    tidy_texture_frame_set_needs_paint (TIDY_TEXTURE_FRAME (priv->shadow), TRUE);
 }
 
 static void
@@ -1799,6 +1552,7 @@ check_needs_pixmap (MetaWindowActor *self)
   MetaCompScreen      *info     = meta_screen_get_compositor_data (screen);
   MetaCompositor      *compositor;
   Window               xwindow  = priv->xwindow;
+  gboolean             full     = FALSE;
 
   if (!priv->needs_pixmap)
     return;
@@ -1859,96 +1613,26 @@ check_needs_pixmap (MetaWindowActor *self)
        * do it here.
        * See: http://bugzilla.clutter-project.org/show_bug.cgi?id=2236
        */
-#ifdef HAVE_GLX_TEXTURE_PIXMAP
-      if (G_UNLIKELY (!clutter_glx_texture_pixmap_using_extension (
-                                  CLUTTER_GLX_TEXTURE_PIXMAP (priv->actor))))
+      if (!clutter_glx_texture_pixmap_using_extension (
+                                  CLUTTER_GLX_TEXTURE_PIXMAP (priv->actor)))
         g_warning ("NOTE: Not using GLX TFP!\n");
-#endif
 
       g_object_get (priv->actor,
                     "pixmap-width", &pxm_width,
                     "pixmap-height", &pxm_height,
                     NULL);
 
+      if (priv->shadow)
+        clutter_actor_set_size (priv->shadow, pxm_width, pxm_height);
+
       meta_window_actor_update_bounding_region (self, pxm_width, pxm_height);
+
+      full = TRUE;
     }
 
   meta_error_trap_pop (display);
 
   priv->needs_pixmap = FALSE;
-}
-
-static void
-check_needs_shadow (MetaWindowActor *self)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-  MetaShadow *old_shadow = NULL;
-  MetaShadow **shadow_location;
-  gboolean recompute_shadow;
-  gboolean should_have_shadow;
-  gboolean appears_focused;
-
-  if (!priv->mapped)
-    return;
-
-  /* Calling meta_window_actor_has_shadow() here at every pre-paint is cheap
-   * and avoids the need to explicitly handle window type changes, which
-   * we would do if tried to keep track of when we might be adding or removing
-   * a shadow more explicitly. We only keep track of changes to the *shape* of
-   * the shadow with priv->recompute_shadow.
-   */
-
-  should_have_shadow = meta_window_actor_has_shadow (self);
-  appears_focused = meta_window_appears_focused (priv->window);
-
-  if (appears_focused)
-    {
-      recompute_shadow = priv->recompute_focused_shadow;
-      priv->recompute_focused_shadow = FALSE;
-      shadow_location = &priv->focused_shadow;
-    }
-  else
-    {
-      recompute_shadow = priv->recompute_unfocused_shadow;
-      priv->recompute_unfocused_shadow = FALSE;
-      shadow_location = &priv->unfocused_shadow;
-    }
-
-  if (!should_have_shadow || recompute_shadow)
-    {
-      if (*shadow_location != NULL)
-        {
-          old_shadow = *shadow_location;
-          *shadow_location = NULL;
-        }
-    }
-
-  if (*shadow_location == NULL && should_have_shadow)
-    {
-      if (priv->shadow_shape == NULL)
-        {
-          if (priv->shaped && priv->shape_region)
-            priv->shadow_shape = meta_window_shape_new (priv->shape_region);
-          else if (priv->bounding_region)
-            priv->shadow_shape = meta_window_shape_new (priv->bounding_region);
-        }
-
-      if (priv->shadow_shape != NULL)
-        {
-          MetaShadowFactory *factory = meta_shadow_factory_get_default ();
-          const char *shadow_class = meta_window_actor_get_shadow_class (self);
-          cairo_rectangle_int_t shape_bounds;
-
-          meta_window_actor_get_shape_bounds (self, &shape_bounds);
-          *shadow_location = meta_shadow_factory_get_shadow (factory,
-                                                             priv->shadow_shape,
-                                                             shape_bounds.width, shape_bounds.height,
-                                                             shadow_class, appears_focused);
-        }
-    }
-
-  if (old_shadow != NULL)
-    meta_shadow_unref (old_shadow);
 }
 
 static gboolean
@@ -2049,7 +1733,6 @@ check_needs_reshape (MetaWindowActor *self)
 #endif
 
   priv->needs_reshape = FALSE;
-  meta_window_actor_invalidate_shadow (self);
 }
 
 void
@@ -2060,11 +1743,6 @@ meta_window_actor_update_shape (MetaWindowActor   *self,
 
   priv->shaped = shaped;
   priv->needs_reshape = TRUE;
-  if (priv->shadow_shape != NULL)
-    {
-      meta_window_shape_unref (priv->shadow_shape);
-      priv->shadow_shape = NULL;
-    }
 
   clutter_actor_queue_redraw (priv->actor);
 }
@@ -2092,19 +1770,8 @@ meta_window_actor_pre_paint (MetaWindowActor *self)
       priv->received_damage = FALSE;
     }
 
-  check_needs_pixmap (self);
   check_needs_reshape (self);
-  check_needs_shadow (self);
-}
-
-void
-meta_window_actor_invalidate_shadow (MetaWindowActor *self)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-
-  priv->recompute_focused_shadow = TRUE;
-  priv->recompute_unfocused_shadow = TRUE;
-  clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
+  check_needs_pixmap (self);
 }
 
 void

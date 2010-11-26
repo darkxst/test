@@ -28,19 +28,19 @@
 #include "window-private.h"
 #include "boxes-private.h"
 #include "edge-resistance.h"
-#include <meta/util.h>
-#include "frame.h"
-#include <meta/errors.h>
+#include "util.h"
+#include "frame-private.h"
+#include "errors.h"
 #include "workspace-private.h"
 #include "stack.h"
 #include "keybindings-private.h"
 #include "ui.h"
 #include "place.h"
 #include "session.h"
-#include <meta/prefs.h>
+#include "prefs.h"
 #include "resizepopup.h"
 #include "xprops.h"
-#include <meta/group.h>
+#include "group.h"
 #include "window-props.h"
 #include "constraints.h"
 #include "mutter-enum-types.h"
@@ -71,9 +71,6 @@ static void     set_net_wm_state          (MetaWindow     *window);
 static void     send_configure_notify     (MetaWindow     *window);
 static gboolean process_property_notify   (MetaWindow     *window,
                                            XPropertyEvent *event);
-
-static void     meta_window_force_placement (MetaWindow     *window);
-
 static void     meta_window_show          (MetaWindow     *window);
 static void     meta_window_hide          (MetaWindow     *window);
 
@@ -1797,18 +1794,7 @@ implement_showing (MetaWindow *window,
                 showing, window->desc);
 
   if (!showing)
-    {
-      /* When we manage a new window, we normally delay placing it
-       * until it is is first shown, but if we're previewing hidden
-       * windows we might want to know where they are on the screen,
-       * so we should place the window even if we're hiding it rather
-       * than showing it.
-       */
-      if (!window->placed && meta_prefs_get_live_hidden_windows ())
-        meta_window_force_placement (window);
-
-      meta_window_hide (window);
-    }
+    meta_window_hide (window);
   else
     meta_window_show (window);
 
@@ -2492,36 +2478,6 @@ meta_window_toplevel_is_mapped (MetaWindow *window)
 }
 
 static void
-meta_window_force_placement (MetaWindow *window)
-{
-  if (window->placed)
-    return;
-
-  /* We have to recalc the placement here since other windows may
-   * have been mapped/placed since we last did constrain_position
-   */
-
-  /* calc_placement is an efficiency hack to avoid
-   * multiple placement calculations before we finally
-   * show the window.
-   */
-  window->calc_placement = TRUE;
-  meta_window_move_resize_now (window);
-  window->calc_placement = FALSE;
-
-  /* don't ever do the initial position constraint thing again.
-   * This is toggled here so that initially-iconified windows
-   * still get placed when they are ultimately shown.
-   */
-  window->placed = TRUE;
-
-  /* Don't want to accidentally reuse the fact that we had been denied
-   * focus in any future constraints unless we're denied focus again.
-   */
-  window->denied_focus_and_not_transient = FALSE;
-}
-
-static void
 meta_window_show (MetaWindow *window)
 {
   gboolean did_show;
@@ -2594,7 +2550,30 @@ meta_window_show (MetaWindow *window)
     }
 
   if (!window->placed)
-    meta_window_force_placement (window);
+    {
+      /* We have to recalc the placement here since other windows may
+       * have been mapped/placed since we last did constrain_position
+       */
+
+      /* calc_placement is an efficiency hack to avoid
+       * multiple placement calculations before we finally
+       * show the window.
+       */
+      window->calc_placement = TRUE;
+      meta_window_move_resize_now (window);
+      window->calc_placement = FALSE;
+
+      /* don't ever do the initial position constraint thing again.
+       * This is toggled here so that initially-iconified windows
+       * still get placed when they are ultimately shown.
+       */
+      window->placed = TRUE;
+
+      /* Don't want to accidentally reuse the fact that we had been denied
+       * focus in any future constraints unless we're denied focus again.
+       */
+      window->denied_focus_and_not_transient = FALSE;
+    }
 
   if (needs_stacking_adjustment)
     {
@@ -2699,8 +2678,6 @@ meta_window_show (MetaWindow *window)
 
   if (!window->visible_to_compositor)
     {
-      window->visible_to_compositor = TRUE;
-
       if (window->display->compositor)
         {
           MetaCompEffect effect = META_COMP_EFFECT_NONE;
@@ -2720,6 +2697,8 @@ meta_window_show (MetaWindow *window)
           meta_compositor_show_window (window->display->compositor,
                                        window, effect);
         }
+
+      window->visible_to_compositor = TRUE;
     }
 
   /* We don't want to worry about all cases from inside
@@ -2790,8 +2769,6 @@ meta_window_hide (MetaWindow *window)
 
   if (window->visible_to_compositor)
     {
-      window->visible_to_compositor = FALSE;
-
       if (window->display->compositor)
         {
           MetaCompEffect effect = META_COMP_EFFECT_NONE;
@@ -2811,6 +2788,8 @@ meta_window_hide (MetaWindow *window)
           meta_compositor_hide_window (window->display->compositor,
                                        window, effect);
         }
+
+      window->visible_to_compositor = FALSE;
     }
 
   did_hide = FALSE;
@@ -2993,7 +2972,7 @@ ensure_size_hints_satisfied (MetaRectangle    *rect,
 static void
 meta_window_save_rect (MetaWindow *window)
 {
-  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED_SIDE_BY_SIDE (window) || window->fullscreen))
+  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED (window) || window->fullscreen))
     {
       /* save size/pos as appropriate args for move_resize */
       if (!window->maximized_horizontally)
@@ -3035,7 +3014,7 @@ force_save_user_window_placement (MetaWindow *window)
 static void
 save_user_window_placement (MetaWindow *window)
 {
-  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED_SIDE_BY_SIDE (window) || window->fullscreen))
+  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED (window) || window->fullscreen))
     {
       MetaRectangle user_rect;
 
@@ -3179,47 +3158,14 @@ meta_window_maximize (MetaWindow        *window,
     }
 }
 
-/**
- * meta_window_get_maximized:
- *
- * Gets the current maximization state of the window, as combination
- * of the %META_MAXIMIZE_HORIZONTAL and %META_MAXIMIZE_VERTICAL flags;
- *
- * Return value: current maximization state
- */
-MetaMaximizeFlags
-meta_window_get_maximized (MetaWindow *window)
-{
-  return ((window->maximized_horizontally ? META_MAXIMIZE_HORIZONTAL : 0) |
-          (window->maximized_vertically ? META_MAXIMIZE_VERTICAL : 0));
-}
-
-/**
- * meta_window_is_fullscreen:
- *
- * Return value: %TRUE if the window is currently fullscreen
- */
-gboolean
-meta_window_is_fullscreen (MetaWindow *window)
-{
-  return window->fullscreen;
-}
-
-void
+static void
 meta_window_tile (MetaWindow *window)
 {
-  MetaMaximizeFlags directions;
-
   /* Don't do anything if no tiling is requested */
   if (window->tile_mode == META_TILE_NONE)
     return;
 
-  if (window->tile_mode == META_TILE_MAXIMIZED)
-    directions = META_MAXIMIZE_VERTICAL | META_MAXIMIZE_HORIZONTAL;
-  else
-    directions = META_MAXIMIZE_VERTICAL;
-
-  meta_window_maximize_internal (window, directions, NULL);
+  meta_window_maximize_internal (window, META_MAXIMIZE_VERTICAL, NULL);
   meta_screen_tile_preview_update (window->screen, FALSE);
 
   if (window->display->compositor)
@@ -3246,7 +3192,7 @@ meta_window_tile (MetaWindow *window)
 }
 
 static gboolean
-meta_window_can_tile_side_by_side (MetaWindow *window)
+meta_window_can_tile (MetaWindow *window)
 {
   const MetaMonitorInfo *monitor;
   MetaRectangle tile_area;
@@ -3275,18 +3221,6 @@ meta_window_can_tile_side_by_side (MetaWindow *window)
 
   return tile_area.width >= window->size_hints.min_width &&
          tile_area.height >= window->size_hints.min_height;
-}
-
-static gboolean
-meta_window_can_tile_maximized (MetaWindow *window)
-{
-  if (!META_WINDOW_ALLOWS_RESIZE (window))
-    return FALSE;
-
-  if (!window->has_maximize_func)
-    return FALSE;
-
-  return TRUE;
 }
 
 static void
@@ -3355,13 +3289,6 @@ meta_window_unmaximize_internal (MetaWindow        *window,
         window->maximized_horizontally && !unmaximize_horizontally;
       window->maximized_vertically =
         window->maximized_vertically   && !unmaximize_vertically;
-
-      /* Reset the tile mode for maximized tiled windows for consistency
-       * with "normal" maximized windows, but keep other tile modes,
-       * as side-by-side tiled windows may snap back.
-       */
-      if (window->tile_mode == META_TILE_MAXIMIZED)
-        window->tile_mode = META_TILE_NONE;
 
       /* Unmaximize to the saved_rect position in the direction(s)
        * being unmaximized.
@@ -3446,8 +3373,7 @@ meta_window_unmaximize (MetaWindow        *window,
                         MetaMaximizeFlags  directions)
 {
   /* Restore tiling if necessary */
-  if (window->tile_mode == META_TILE_LEFT ||
-      window->tile_mode == META_TILE_RIGHT)
+  if (window->tile_mode != META_TILE_NONE)
     {
       window->maximized_horizontally = FALSE;
       meta_window_tile (window);
@@ -4739,13 +4665,6 @@ meta_window_get_geometry (MetaWindow  *window,
     window->size_hints.height_inc;
 }
 
-/**
- * meta_window_get_outer_rect:
- * @window: a #MetaWindow
- * @rect: (out): pointer to an allocated #MetaRectangle
- *
- * Gets the rectangle that bounds @window and, if decorated, its decorations.
- */
 void
 meta_window_get_outer_rect (const MetaWindow *window,
                             MetaRectangle    *rect)
@@ -5991,12 +5910,12 @@ meta_window_client_message (MetaWindow *window,
   else if (event->xclient.message_type ==
            display->atom__NET_MOVERESIZE_WINDOW)
     {
-      int gravity;
+      int gravity, source;
       guint value_mask;
 
       gravity = (event->xclient.data.l[0] & 0xff);
       value_mask = (event->xclient.data.l[0] & 0xf00) >> 8;
-      /* source = (event->xclient.data.l[0] & 0xf000) >> 12; */
+      source = (event->xclient.data.l[0] & 0xf000) >> 12;
 
       if (gravity == 0)
         gravity = window->size_hints.win_gravity;
@@ -6039,6 +5958,7 @@ meta_window_client_message (MetaWindow *window,
   else if (event->xclient.message_type ==
            display->atom__NET_WM_FULLSCREEN_MONITORS)
     {
+      MetaClientType source_indication;
       gulong top, bottom, left, right;
 
       meta_verbose ("_NET_WM_FULLSCREEN_MONITORS request for window '%s'\n",
@@ -6048,7 +5968,7 @@ meta_window_client_message (MetaWindow *window,
       bottom = event->xclient.data.l[1];
       left = event->xclient.data.l[2];
       right = event->xclient.data.l[3];
-      /* source_indication = event->xclient.data.l[4]; */
+      source_indication = event->xclient.data.l[4];
 
       meta_window_update_fullscreen_monitors (window, top, bottom, left, right);
     }
@@ -7658,6 +7578,7 @@ meta_window_titlebar_is_onscreen (MetaWindow *window)
 {
   MetaRectangle  titlebar_rect;
   GList         *onscreen_region;
+  int            titlebar_size;
   gboolean       is_onscreen;
 
   const int min_height_needed  = 8;
@@ -7671,6 +7592,7 @@ meta_window_titlebar_is_onscreen (MetaWindow *window)
   /* Get the rectangle corresponding to the titlebar */
   meta_window_get_outer_rect (window, &titlebar_rect);
   titlebar_rect.height = window->frame->child_y;
+  titlebar_size = meta_rectangle_area (&titlebar_rect);
 
   /* Run through the spanning rectangles for the screen and see if one of
    * them overlaps with the titlebar sufficiently to consider it onscreen.
@@ -7844,13 +7766,14 @@ update_move (MetaWindow  *window,
   shake_threshold = meta_ui_get_drag_threshold (window->screen->ui) *
     DRAG_THRESHOLD_TO_SHAKE_THRESHOLD_FACTOR;
 
-  if (meta_prefs_get_edge_tiling ())
+  if (meta_prefs_get_side_by_side_tiling () &&
+      meta_window_can_tile (window))
     {
       const MetaMonitorInfo *monitor;
       MetaRectangle work_area;
 
-      /* For side-by-side tiling we are interested in the inside vertical
-       * edges of the work area of the monitor where the pointer is located.
+      /* For tiling we are interested in the work area of the monitor where
+       * the pointer is located.
        * Also see comment in meta_window_get_current_tile_area()
        */
       monitor = meta_screen_get_current_monitor (window->screen);
@@ -7858,38 +7781,17 @@ update_move (MetaWindow  *window,
                                              monitor->number,
                                              &work_area);
 
-      if (meta_window_can_tile_side_by_side (window))
+      if (y >= monitor->rect.y &&
+          y < (monitor->rect.y + monitor->rect.height))
         {
-          if (y >= monitor->rect.y &&
-              y < (monitor->rect.y + monitor->rect.height))
-            {
-              /* check if cursor is near an edge of the work area */
-              if (x >= monitor->rect.x && x < (work_area.x + shake_threshold))
-                window->tile_mode = META_TILE_LEFT;
-              else if (x >= work_area.x + work_area.width - shake_threshold &&
-                       x < (monitor->rect.x + monitor->rect.width))
-                window->tile_mode = META_TILE_RIGHT;
-              else
-                window->tile_mode = META_TILE_NONE;
-            }
-        }
-
-      /* For maximized tiling we are interested in the outside top edge
-       * of the work area of the monitor where the pointer is located.
-       *
-       * We use the outside edge instead of the inside edge, because we
-       * don't want to force users to maximize windows they are placing
-       * near the top of their screens.
-       */
-      if (meta_window_can_tile_maximized (window))
-        {
-          if (x >= monitor->rect.x &&
-              x < (monitor->rect.x + monitor->rect.width))
-            {
-              /* check if cursor is on the top edge of the monitor*/
-              if (y >= monitor->rect.y && y <= work_area.y)
-                  window->tile_mode = META_TILE_MAXIMIZED;
-            }
+          /* check if cursor is near an edge of the work area */
+          if (x >= monitor->rect.x && x < (work_area.x + shake_threshold))
+            window->tile_mode = META_TILE_LEFT;
+          else if (x >= work_area.x + work_area.width - shake_threshold &&
+                   x < (monitor->rect.x + monitor->rect.width))
+            window->tile_mode = META_TILE_RIGHT;
+          else
+            window->tile_mode = META_TILE_NONE;
         }
     }
 
@@ -7899,15 +7801,12 @@ update_move (MetaWindow  *window,
    */
 
   if ((META_WINDOW_MAXIMIZED (window) && ABS (dy) >= shake_threshold) ||
-      (META_WINDOW_TILED_SIDE_BY_SIDE (window) && (MAX (ABS (dx), ABS (dy)) >= shake_threshold)))
+      (META_WINDOW_TILED (window) && (MAX (ABS (dx), ABS (dy)) >= shake_threshold)))
     {
       double prop;
 
-      /* Shake loose, so that the window snaps back to maximized
-       * when dragged near the top; do not snap back if tiling
-       * is enabled, as top edge tiling can be used in that case
-       */
-      window->shaken_loose = !meta_prefs_get_edge_tiling ();
+      /* Shake loose */
+      window->shaken_loose = !META_WINDOW_TILED (window);
       window->tile_mode = META_TILE_NONE;
 
       /* move the unmaximized window to the cursor */
@@ -7940,13 +7839,12 @@ update_move (MetaWindow  *window,
    * loose or it is still maximized (then move straight)
    */
   else if ((window->shaken_loose || META_WINDOW_MAXIMIZED (window)) &&
-           window->tile_mode != META_TILE_LEFT && window->tile_mode != META_TILE_RIGHT)
+           window->tile_mode == META_TILE_NONE)
     {
       const MetaMonitorInfo *wmonitor;
       MetaRectangle work_area;
       int monitor;
 
-      window->tile_mode = META_TILE_NONE;
       wmonitor = meta_screen_get_monitor_for_window (window->screen, window);
 
       for (monitor = 0; monitor < window->screen->n_monitor_infos; monitor++)
@@ -8005,7 +7903,7 @@ update_move (MetaWindow  *window,
   meta_window_get_client_root_coords (window, &old);
 
   /* Don't allow movement in the maximized directions or while tiled */
-  if (window->maximized_horizontally || META_WINDOW_TILED_SIDE_BY_SIDE (window))
+  if (window->maximized_horizontally || META_WINDOW_TILED (window))
     new_x = old.x;
   if (window->maximized_vertically)
     new_y = old.y;
@@ -8441,23 +8339,6 @@ check_use_this_motion_notify (MetaWindow *window,
     }
 }
 
-static void
-update_tile_mode (MetaWindow *window)
-{
-  switch (window->tile_mode)
-    {
-      case META_TILE_LEFT:
-      case META_TILE_RIGHT:
-          if (!META_WINDOW_TILED_SIDE_BY_SIDE (window))
-              window->tile_mode = META_TILE_NONE;
-          break;
-      case META_TILE_MAXIMIZED:
-          if (!META_WINDOW_MAXIMIZED (window))
-              window->tile_mode = META_TILE_NONE;
-          break;
-    }
-}
-
 void
 meta_window_handle_mouse_grab_op_event (MetaWindow *window,
                                         XEvent     *event)
@@ -8550,7 +8431,9 @@ meta_window_handle_mouse_grab_op_event (MetaWindow *window,
                * would break the ability to snap back to the tiled
                * state, so we wait until mouse release.
                */
-              update_tile_mode (window);
+              if (!window->maximized_vertically &&
+                  window->tile_mode != META_TILE_NONE)
+                window->tile_mode = META_TILE_NONE;
             }
         }
 
@@ -9392,22 +9275,9 @@ transient_has_focus (MetaWindow *window,
   return FALSE;
 }
 
-/**
- * meta_window_appears_focused:
- * @window: a #MetaWindow
- *
- * Determines if the window should be drawn with a focused appearance. This is
- * true for focused windows but also true for windows with a focused modal
- * dialog attached.
- *
- * Return value: %TRUE if the window should be drawn with a focused frame
- */
 gboolean
 meta_window_appears_focused (MetaWindow *window)
 {
-  /* FIXME: meta_window_foreach_transient() iterates over all windows; we
-   *  should eat the complexity to cache a bit for this.
-   */
   if (!window->has_focus && meta_prefs_get_attach_modal_dialogs ())
     {
       gboolean focus = FALSE;
@@ -9459,14 +9329,6 @@ meta_window_is_skip_taskbar (MetaWindow *window)
   return window->skip_taskbar;
 }
 
-/**
- * meta_window_get_rect:
- * @window: a #MetaWindow
- *
- * Gets the rectangle that bounds @window, ignoring any window decorations.
- *
- * Return value: (transfer none): the #MetaRectangle for the window
- */
 MetaRectangle *
 meta_window_get_rect (MetaWindow *window)
 {
@@ -9792,75 +9654,4 @@ meta_window_get_mutter_hints (MetaWindow *window)
   g_return_val_if_fail (META_IS_WINDOW (window), NULL);
 
   return window->mutter_hints;
-}
-
-/**
- * meta_window_get_frame_type:
- * @window: a #MetaWindow
- *
- * Gets the type of window decorations that should be used for this window.
- *
- * Return value: the frame type
- */
-MetaFrameType
-meta_window_get_frame_type (MetaWindow *window)
-{
-  MetaFrameType base_type = META_FRAME_TYPE_LAST;
-
-  switch (window->type)
-    {
-    case META_WINDOW_NORMAL:
-      base_type = META_FRAME_TYPE_NORMAL;
-      break;
-
-    case META_WINDOW_DIALOG:
-      base_type = META_FRAME_TYPE_DIALOG;
-      break;
-
-    case META_WINDOW_MODAL_DIALOG:
-      if (meta_prefs_get_attach_modal_dialogs () &&
-          meta_window_get_transient_for (window) != NULL)
-        base_type = META_FRAME_TYPE_ATTACHED;
-      else
-        base_type = META_FRAME_TYPE_MODAL_DIALOG;
-      break;
-
-    case META_WINDOW_MENU:
-      base_type = META_FRAME_TYPE_MENU;
-      break;
-
-    case META_WINDOW_UTILITY:
-      base_type = META_FRAME_TYPE_UTILITY;
-      break;
-
-    case META_WINDOW_DESKTOP:
-    case META_WINDOW_DOCK:
-    case META_WINDOW_TOOLBAR:
-    case META_WINDOW_SPLASHSCREEN:
-    case META_WINDOW_DROPDOWN_MENU:
-    case META_WINDOW_POPUP_MENU:
-    case META_WINDOW_TOOLTIP:
-    case META_WINDOW_NOTIFICATION:
-    case META_WINDOW_COMBO:
-    case META_WINDOW_DND:
-    case META_WINDOW_OVERRIDE_OTHER:
-      /* No frame */
-      base_type = META_FRAME_TYPE_LAST;
-      break;
-    }
-
-  if (base_type == META_FRAME_TYPE_LAST)
-    {
-      /* can't add border if undecorated */
-      return META_FRAME_TYPE_LAST;
-    }
-  else if (window->border_only && base_type != META_FRAME_TYPE_ATTACHED)
-    {
-      /* override base frame type */
-      return META_FRAME_TYPE_BORDER;
-    }
-  else
-    {
-      return base_type;
-    }
 }

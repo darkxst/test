@@ -34,21 +34,21 @@
 
 #include <config.h>
 #include "display-private.h"
-#include <meta/util.h>
-#include <meta/main.h>
+#include "util.h"
+#include "main.h"
 #include "screen-private.h"
 #include "window-private.h"
 #include "window-props.h"
 #include "group-props.h"
-#include "frame.h"
-#include <meta/errors.h>
+#include "frame-private.h"
+#include "errors.h"
 #include "keybindings-private.h"
-#include <meta/prefs.h>
+#include "prefs.h"
 #include "resizepopup.h"
 #include "xprops.h"
 #include "workspace-private.h"
 #include "bell.h"
-#include <meta/compositor.h>
+#include "compositor.h"
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #ifdef HAVE_SOLARIS_XINERAMA
@@ -388,6 +388,26 @@ enable_compositor (MetaDisplay *display,
 }
 
 static void
+disable_compositor (MetaDisplay *display)
+{
+  GSList *list;
+  
+  if (!display->compositor)
+    return;
+  
+  for (list = display->screens; list != NULL; list = list->next)
+    {
+      MetaScreen *screen = list->data;
+      
+      meta_compositor_unmanage_screen (screen->display->compositor,
+				       screen);
+    }
+  
+  meta_compositor_destroy (display->compositor);
+  display->compositor = NULL;
+}
+
+static void
 meta_display_init (MetaDisplay *disp)
 {
   /* Some stuff could go in here that's currently in _open,
@@ -417,7 +437,7 @@ meta_display_open (void)
   /* A list of all atom names, so that we can intern them in one go. */
   char *atom_names[] = {
 #define item(x) #x,
-#include <meta/atomnames.h>
+#include "atomnames.h"
 #undef item
   };
   Atom atoms[G_N_ELEMENTS(atom_names)];
@@ -490,7 +510,7 @@ meta_display_open (void)
   {
     int i = 0;    
 #define item(x) the_display->atom_##x = atoms[i++];
-#include <meta/atomnames.h>
+#include "atomnames.h"
 #undef item
   }
 
@@ -553,7 +573,6 @@ meta_display_open (void)
   the_display->grab_window = NULL;
   the_display->grab_screen = NULL;
   the_display->grab_resize_popup = NULL;
-  the_display->grab_tile_mode = META_TILE_NONE;
 
   the_display->grab_edge_resistance_data = NULL;
 
@@ -820,7 +839,8 @@ meta_display_open (void)
   /* We don't composite the windows here because they will be composited 
      faster with the call to meta_screen_manage_all_windows further down 
      the code */
-  enable_compositor (the_display, FALSE);
+  if (1) /* meta_prefs_get_compositing_manager ()) FIXME */
+    enable_compositor (the_display, FALSE);
    
   meta_display_grab (the_display);
   
@@ -1746,10 +1766,9 @@ event_callback (XEvent   *event,
        * we can get into a confused state. So if a keybinding is
        * handled (because it's one of our hot-keys, or because we are
        * in a keyboard-grabbed mode like moving a window, we don't
-       * want to pass the key event to the compositor or GTK+ at all.
+       * want to pass the key event to the compositor at all.
        */
-      if (meta_display_process_key_event (display, window, event))
-        filter_out_event = bypass_compositor = TRUE;
+      bypass_compositor = meta_display_process_key_event (display, window, event);
       break;
     case ButtonPress:
       if (display->grab_op == META_GRAB_OP_COMPOSITOR)
@@ -2525,6 +2544,12 @@ event_callback (XEvent   *event,
                     }
                 }
               else if (event->xclient.message_type ==
+                       display->atom__MUTTER_RESTART_MESSAGE)
+                {
+                  meta_verbose ("Received restart request\n");
+                  meta_restart ();
+                }
+              else if (event->xclient.message_type ==
                        display->atom__MUTTER_RELOAD_THEME_MESSAGE)
                 {
                   meta_verbose ("Received reload theme request\n");
@@ -2617,10 +2642,6 @@ event_callback (XEvent   *event,
                   meta_bell_notify (display, xkb_ev);
                 }
 	      break;
-            case XkbNewKeyboardNotify:
-            case XkbMapNotify:
-              meta_display_process_mapping_event (display, event);
-              break;
 	    }
 	}
 #endif
@@ -3576,10 +3597,6 @@ meta_display_begin_grab_op (MetaDisplay *display,
   display->grab_xwindow = grab_xwindow;
   display->grab_button = button;
   display->grab_mask = modmask;
-  if (window)
-    display->grab_tile_mode = window->tile_mode;
-  else
-    display->grab_tile_mode = META_TILE_NONE;
   display->grab_anchor_root_x = root_x;
   display->grab_anchor_root_y = root_y;
   display->grab_latest_motion_x = root_x;
@@ -3776,7 +3793,6 @@ meta_display_end_grab_op (MetaDisplay *display,
   display->grab_window = NULL;
   display->grab_screen = NULL;
   display->grab_xwindow = None;
-  display->grab_tile_mode = META_TILE_NONE;
   display->grab_op = META_GRAB_OP_NONE;
 
   if (display->grab_resize_popup)
@@ -5167,6 +5183,15 @@ prefs_changed_callback (MetaPreference pref,
   else if (pref == META_PREF_AUDIBLE_BELL)
     {
       meta_bell_set_audible (display, meta_prefs_bell_is_audible ());
+    }
+  else if (pref == META_PREF_COMPOSITING_MANAGER)
+    {
+      gboolean cm = meta_prefs_get_compositing_manager ();
+
+      if (cm)
+        enable_compositor (display, TRUE);
+      else
+	disable_compositor (display);
     }
   else if (pref == META_PREF_ATTACH_MODAL_DIALOGS)
     {

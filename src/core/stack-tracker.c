@@ -23,12 +23,12 @@
 
 #include <string.h>
 
-#include "frame.h"
+#include "frame-private.h"
 #include "screen-private.h"
 #include "stack-tracker.h"
-#include <meta/util.h>
+#include "util.h"
 
-#include <meta/compositor.h>
+#include "compositor.h"
 
 /* The complexity here comes from resolving two competing factors:
  *
@@ -54,8 +54,8 @@
  *
  * When we receive a new event: a) we compare the serial in the event to
  * the serial of the queued requests and remove any that are now
- * no longer pending b) if necessary, drop the predicted stacking
- * order to recompute it at the next opportunity.
+ * no longer pending b) drop the predicted stacking order to recompute
+ * it at the next opportunity.
  *
  * Possible optimizations:
  *  Keep the stacks as an array + reverse-mapping hash table to avoid
@@ -505,8 +505,6 @@ static void
 stack_tracker_event_received (MetaStackTracker *tracker,
 			      MetaStackOp      *op)
 {
-  gboolean need_sync = FALSE;
-
   meta_stack_op_dump (op, "Stack op event received: ", "\n");
 
   if (op->any.serial < tracker->server_serial)
@@ -514,8 +512,7 @@ stack_tracker_event_received (MetaStackTracker *tracker,
 
   tracker->server_serial = op->any.serial;
 
-  if (meta_stack_op_apply (op, tracker->server_stack))
-    need_sync = TRUE;
+  meta_stack_op_apply (op, tracker->server_stack);
 
   while (tracker->queued_requests->head)
     {
@@ -525,21 +522,17 @@ stack_tracker_event_received (MetaStackTracker *tracker,
 
       g_queue_pop_head (tracker->queued_requests);
       meta_stack_op_free (queued_op);
-      need_sync = TRUE;
     }
 
-  if (need_sync)
+  if (tracker->predicted_stack)
     {
-      if (tracker->predicted_stack)
-        {
-          g_array_free (tracker->predicted_stack, TRUE);
-          tracker->predicted_stack = NULL;
-        }
-
-      meta_stack_tracker_queue_sync_stack (tracker);
+      g_array_free (tracker->predicted_stack, TRUE);
+      tracker->predicted_stack = NULL;
     }
 
   meta_stack_tracker_dump (tracker);
+
+  meta_stack_tracker_queue_sync_stack (tracker);
 }
 
 void

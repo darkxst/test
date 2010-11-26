@@ -33,7 +33,7 @@
 #ifndef META_WORKSPACE_PRIVATE_H
 #define META_WORKSPACE_PRIVATE_H
 
-#include <meta/workspace.h>
+#include "workspace.h"
 #include "window-private.h"
 
 struct _MetaWorkspace

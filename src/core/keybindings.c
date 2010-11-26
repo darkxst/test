@@ -29,13 +29,13 @@
 #include <config.h>
 #include "keybindings-private.h"
 #include "workspace-private.h"
-#include <meta/errors.h>
+#include "errors.h"
 #include "edge-resistance.h"
 #include "ui.h"
-#include "frame.h"
+#include "frame-private.h"
 #include "place.h"
-#include <meta/prefs.h>
-#include <meta/util.h>
+#include "prefs.h"
+#include "util.h"
 
 #include <X11/keysym.h>
 #include <string.h>
@@ -116,10 +116,6 @@ reload_keymap (MetaDisplay *display)
 {
   if (display->keymap)
     meta_XFree (display->keymap);
-
-  /* This is expensive to compute, so we'll lazily load if and when we first
-   * need it */
-  display->above_tab_keycode = 0;
 
   display->keymap = XGetKeyboardMapping (display->xdisplay,
                                          display->min_keycode,
@@ -232,26 +228,17 @@ reload_modmap (MetaDisplay *display)
               display->meta_mask);
 }
 
-static guint
-keysym_to_keycode (MetaDisplay *display,
-                   guint        keysym)
-{
-  if (keysym == META_KEY_ABOVE_TAB)
-    return meta_display_get_above_tab_keycode (display);
-  else
-    return XKeysymToKeycode (display->xdisplay, keysym);
-}
-
 static void
 reload_keycodes (MetaDisplay *display)
 {
   meta_topic (META_DEBUG_KEYBINDINGS,
               "Reloading keycodes for binding tables\n");
-
-  if (display->overlay_key_combo.keysym != 0)
+  
+  if (display->overlay_key_combo.keysym 
+      && display->overlay_key_combo.keycode == 0)
     {
-      display->overlay_key_combo.keycode =
-        keysym_to_keycode (display, display->overlay_key_combo.keysym);
+      display->overlay_key_combo.keycode = XKeysymToKeycode (
+          display->xdisplay, display->overlay_key_combo.keysym);
     }
   
   if (display->key_bindings)
@@ -261,11 +248,9 @@ reload_keycodes (MetaDisplay *display)
       i = 0;
       while (i < display->n_key_bindings)
         {
-          if (display->key_bindings[i].keysym != 0)
-            {
-              display->key_bindings[i].keycode =
-                keysym_to_keycode (display, display->key_bindings[i].keysym);
-            }
+          if (display->key_bindings[i].keycode == 0)
+              display->key_bindings[i].keycode = XKeysymToKeycode (
+                      display->xdisplay, display->key_bindings[i].keysym);
           
           ++i;
         }
@@ -535,9 +520,6 @@ meta_display_get_keybinding_action (MetaDisplay  *display,
   mask = mask & 0xff & ~display->ignored_modifier_mask;
   binding = display_get_keybinding (display, keysym, keycode, mask);
 
-  if (!binding && keycode == meta_display_get_above_tab_keycode (display))
-    binding = display_get_keybinding (display, META_KEY_ABOVE_TAB, keycode, mask);
-
   if (binding)
     return meta_prefs_get_keybinding_action (binding->name);
   else
@@ -548,51 +530,26 @@ void
 meta_display_process_mapping_event (MetaDisplay *display,
                                     XEvent      *event)
 { 
-  gboolean keymap_changed = FALSE;
-  gboolean modmap_changed = FALSE;
-
-#ifdef HAVE_XKB
-  if (event->type == display->xkb_base_event_type)
-    {
-      meta_topic (META_DEBUG_KEYBINDINGS,
-                  "XKB mapping changed, will redo keybindings\n");
-
-      keymap_changed = TRUE;
-      modmap_changed = TRUE;
-    }
-  else
-#endif
   if (event->xmapping.request == MappingModifier)
     {
       meta_topic (META_DEBUG_KEYBINDINGS,
                   "Received MappingModifier event, will reload modmap and redo keybindings\n");
 
-      modmap_changed = TRUE;
+      reload_modmap (display);
+
+      reload_modifiers (display);
+      
+      regrab_key_bindings (display);
     }
   else if (event->xmapping.request == MappingKeyboard)
     {
       meta_topic (META_DEBUG_KEYBINDINGS,
                   "Received MappingKeyboard event, will reload keycodes and redo keybindings\n");
 
-      keymap_changed = TRUE;
-    }
-
-  /* Now to do the work itself */
-
-  if (keymap_changed || modmap_changed)
-    {
-      if (keymap_changed)
-        reload_keymap (display);
-
-      /* Deciphering the modmap depends on the loaded keysyms to find out
-       * what modifiers is Super and so forth, so we need to reload it
-       * even when only the keymap changes */
+      reload_keymap (display);
       reload_modmap (display);
-
-      if (keymap_changed)
-        reload_keycodes (display);
-
-      reload_modifiers (display);
+      
+      reload_keycodes (display);
 
       regrab_key_bindings (display);
     }
@@ -660,14 +617,6 @@ meta_display_init_keys (MetaDisplay *display)
   /* Keys are actually grabbed in meta_screen_grab_keys() */
   
   meta_prefs_add_listener (bindings_changed_callback, display);
-
-#ifdef HAVE_XKB
-  /* meta_display_init_keys() should have already called XkbQueryExtension() */
-  if (display->xkb_base_event_type != -1)
-    XkbSelectEvents (display->xdisplay, XkbUseCoreKbd,
-                     XkbNewKeyboardNotifyMask | XkbMapNotifyMask,
-                     XkbNewKeyboardNotifyMask | XkbMapNotifyMask);
-#endif
 }
 
 void
@@ -1551,24 +1500,15 @@ process_mouse_move_resize_grab (MetaDisplay *display,
 
   if (keysym == XK_Escape)
     {
-      /* Hide the tiling preview if necessary */
-      if (window->tile_mode != META_TILE_NONE)
-        meta_screen_tile_preview_hide (screen);
-
-      /* Restore the original tile mode */
-      window->tile_mode = display->grab_tile_mode;
-
       /* End move or resize and restore to original state.  If the
        * window was a maximized window that had been "shaken loose" we
        * need to remaximize it.  In normal cases, we need to do a
        * moveresize now to get the position back to the original.
        */
-      if (window->shaken_loose || window->tile_mode == META_TILE_MAXIMIZED)
+      if (window->shaken_loose)
         meta_window_maximize (window,
                               META_MAXIMIZE_HORIZONTAL |
                               META_MAXIMIZE_VERTICAL);
-      else if (window->tile_mode != META_TILE_NONE)
-        meta_window_tile (window);
       else
         meta_window_move_resize (display->grab_window,
                                  TRUE,

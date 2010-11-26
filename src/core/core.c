@@ -25,10 +25,10 @@
 
 #include <config.h>
 #include "core.h"
-#include "frame.h"
+#include "frame-private.h"
 #include "workspace-private.h"
-#include <meta/prefs.h>
-#include <meta/errors.h>
+#include "prefs.h"
+#include "errors.h"
 
 /* Looks up the MetaWindow representing the frame of the given X window.
  * Used as a helper function by a bunch of the functions below.
@@ -117,8 +117,65 @@ meta_core_get (Display *xdisplay,
         *((MetaFrameFlags*)answer) = meta_frame_get_flags (window->frame);
         break; 
       case META_CORE_GET_FRAME_TYPE:
-        *((MetaFrameType*)answer) = meta_window_get_frame_type (window);
-        break;
+          {
+          MetaFrameType base_type = META_FRAME_TYPE_LAST;
+
+          switch (window->type)
+            {
+            case META_WINDOW_NORMAL:
+              base_type = META_FRAME_TYPE_NORMAL;
+              break;
+
+            case META_WINDOW_DIALOG:
+              base_type = META_FRAME_TYPE_DIALOG;
+              break;
+
+            case META_WINDOW_MODAL_DIALOG:
+              base_type = META_FRAME_TYPE_MODAL_DIALOG;
+              break;
+
+            case META_WINDOW_MENU:
+              base_type = META_FRAME_TYPE_MENU;
+              break;
+
+            case META_WINDOW_UTILITY:
+              base_type = META_FRAME_TYPE_UTILITY;
+              break;
+
+            case META_WINDOW_DESKTOP:
+            case META_WINDOW_DOCK:
+            case META_WINDOW_TOOLBAR:
+            case META_WINDOW_SPLASHSCREEN:
+	    case META_WINDOW_DROPDOWN_MENU:
+	    case META_WINDOW_POPUP_MENU:
+	    case META_WINDOW_TOOLTIP:
+	    case META_WINDOW_NOTIFICATION:
+	    case META_WINDOW_COMBO:
+	    case META_WINDOW_DND:
+	    case META_WINDOW_OVERRIDE_OTHER:
+              /* No frame */
+              base_type = META_FRAME_TYPE_LAST;
+              break;
+
+            }
+
+          if (base_type == META_FRAME_TYPE_LAST)
+            {
+              /* can't add border if undecorated */
+              *((MetaFrameType*)answer) = META_FRAME_TYPE_LAST; 
+            }
+          else if (window->border_only)
+            {
+              /* override base frame type */
+              *((MetaFrameType*)answer) = META_FRAME_TYPE_BORDER; 
+            }
+          else
+            {
+              *((MetaFrameType*)answer) = base_type;
+            }
+
+          break; 
+          }
       case META_CORE_GET_MINI_ICON:
         *((GdkPixbuf**)answer) = window->mini_icon;
         break;

@@ -6,7 +6,7 @@
 #include <config.h>
 
 #include <X11/extensions/Xdamage.h>
-#include <meta/compositor-mutter.h>
+#include "compositor-mutter.h"
 
 MetaWindowActor *meta_window_actor_new (MetaWindow *window);
 
@@ -27,8 +27,6 @@ void meta_window_actor_unmaximize (MetaWindowActor *self,
 void meta_window_actor_process_damage (MetaWindowActor    *self,
                                        XDamageNotifyEvent *event);
 void meta_window_actor_pre_paint      (MetaWindowActor    *self);
-
-void meta_window_actor_invalidate_shadow (MetaWindowActor *self);
 
 gboolean meta_window_actor_effect_in_progress  (MetaWindowActor *self);
 void     meta_window_actor_sync_actor_position (MetaWindowActor *self);

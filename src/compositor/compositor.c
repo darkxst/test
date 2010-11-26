@@ -4,19 +4,17 @@
 
 #include <clutter/x11/clutter-x11.h>
 
-#include <meta/screen.h>
-#include <meta/errors.h>
-#include <meta/window.h>
+#include "screen.h"
+#include "errors.h"
+#include "window.h"
 #include "compositor-private.h"
-#include <meta/compositor-mutter.h>
+#include "compositor-mutter.h"
 #include "xprops.h"
-#include <meta/prefs.h>
-#include <meta/meta-shadow-factory.h>
+#include "prefs.h"
 #include "meta-window-actor-private.h"
 #include "meta-window-group.h"
-#include "meta-background-actor.h"
-#include "window-private.h" /* to check window->hidden */
-#include "display-private.h" /* for meta_display_lookup_x_window() */
+#include "../core/window-private.h" /* to check window->hidden */
+#include "../core/display-private.h" /* for meta_display_lookup_x_window() */
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xcomposite.h>
 
@@ -35,7 +33,7 @@ composite_at_least_version (MetaDisplay *display, int maj, int min)
   return (major > maj || (major == maj && minor >= min));
 }
 
-static void sync_actor_stacking (MetaCompScreen *info);
+static void sync_actor_stacking (GList *windows);
 
 static void
 meta_finish_workspace_switch (MetaCompScreen *info)
@@ -49,7 +47,7 @@ meta_finish_workspace_switch (MetaCompScreen *info)
   /*
    * Fix up stacking order in case the plugin messed it up.
    */
-  sync_actor_stacking (info);
+  sync_actor_stacking (info->windows);
 
 /*   printf ("... FINISHED DESKTOP SWITCH\n"); */
 
@@ -88,7 +86,7 @@ add_win (MetaWindow *window)
 
   meta_window_actor_new (window);
 
-  sync_actor_stacking (info);
+  sync_actor_stacking (info->windows);
 }
 
 static void
@@ -136,22 +134,6 @@ process_property_notify (MetaCompositor	*compositor,
                          MetaWindow     *window)
 {
   MetaWindowActor *window_actor;
-
-  if (event->atom == compositor->atom_x_root_pixmap)
-    {
-      GSList *l;
-
-      for (l = meta_display_get_screens (compositor->display); l; l = l->next)
-        {
-	  MetaScreen  *screen = l->data;
-          if (event->window == meta_screen_get_xroot (screen))
-            {
-              MetaCompScreen *info = meta_screen_get_compositor_data (screen);
-              meta_background_actor_update (META_BACKGROUND_ACTOR (info->background_actor));
-              return;
-            }
-        }
-    }
 
   if (window == NULL)
     return;
@@ -251,27 +233,6 @@ meta_get_window_group_for_screen (MetaScreen *screen)
     return NULL;
 
   return info->window_group;
-}
-
-/**
- * meta_get_background_actor_for_screen:
- * @screen: a #MetaScreen
- *
- * Gets the actor that draws the root window background under the windows.
- * The root window background automatically tracks the image or color set
- * by the environment.
- *
- * Returns: (transfer none): The background actor corresponding to @screen
- */
-ClutterActor *
-meta_get_background_actor_for_screen (MetaScreen *screen)
-{
-  MetaCompScreen *info = meta_screen_get_compositor_data (screen);
-
-  if (!info)
-    return NULL;
-
-  return info->background_actor;
 }
 
 /**
@@ -532,13 +493,8 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
   XSelectInput (xdisplay, xwin, event_mask);
 
   info->window_group = meta_window_group_new (screen);
-  info->background_actor = meta_background_actor_new (screen);
   info->overlay_group = clutter_group_new ();
   info->hidden_group = clutter_group_new ();
-
-  clutter_container_add (CLUTTER_CONTAINER (info->window_group),
-                         info->background_actor,
-                         NULL);
 
   clutter_container_add (CLUTTER_CONTAINER (info->stage),
                          info->window_group,
@@ -550,7 +506,18 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
 
   info->plugin_mgr =
     meta_plugin_manager_get (screen);
-  meta_plugin_manager_initialize (info->plugin_mgr);
+
+  if (info->plugin_mgr != meta_plugin_manager_get_default ())
+    {
+      /* The default plugin manager has been initialized during
+       * global preferences load.
+       */
+      if (!meta_plugin_manager_load (info->plugin_mgr))
+        g_critical ("failed to load plugins");
+    }
+
+  if (!meta_plugin_manager_initialize (info->plugin_mgr))
+    g_critical ("failed to initialize plugins");
 
   /*
    * Delay the creation of the overlay window as long as we can, to avoid
@@ -859,73 +826,18 @@ meta_compositor_switch_workspace (MetaCompositor     *compositor,
 }
 
 static void
-sync_actor_stacking (MetaCompScreen *info)
+sync_actor_stacking (GList *windows)
 {
-  GList *children;
   GList *tmp;
-  GList *old;
-  gboolean reordered;
 
-  /* NB: The first entries in the lists are stacked the lowest */
+  /* NB: The first entry in the list is stacked the lowest */
 
-  /* Restacking will trigger full screen redraws, so it's worth a
-   * little effort to make sure we actually need to restack before
-   * we go ahead and do it */
-
-  children = clutter_container_get_children (CLUTTER_CONTAINER (info->window_group));
-  reordered = FALSE;
-
-  old = children;
-
-  /* We allow for actors in the window group other than the actors we
-   * know about, but it's up to a plugin to try and keep them stacked correctly
-   * (we really need extra API to make that reliable.)
-   */
-
-  /* Of the actors we know, the bottom actor should be the background actor */
-
-  while (old && old->data != info->background_actor && !META_IS_WINDOW_ACTOR (old->data))
-    old = old->next;
-  if (old == NULL || old->data != info->background_actor)
-    {
-      reordered = TRUE;
-      goto done_with_check;
-    }
-
-  /* Then the window actors should follow in sequence */
-
-  old = old->next;
-  for (tmp = info->windows; tmp != NULL; tmp = tmp->next)
-    {
-      while (old && !META_IS_WINDOW_ACTOR (old->data))
-        old = old->next;
-
-      /* old == NULL: someone reparented a window out of the window group,
-       * order undefined, always restack */
-      if (old == NULL || old->data != tmp->data)
-        {
-          reordered = TRUE;
-          goto done_with_check;
-        }
-
-      old = old->next;
-    }
-
- done_with_check:
-
-  g_list_free (children);
-
-  if (!reordered)
-    return;
-
-  for (tmp = g_list_last (info->windows); tmp != NULL; tmp = tmp->prev)
+  for (tmp = g_list_last (windows); tmp != NULL; tmp = tmp->prev)
     {
       MetaWindowActor *window_actor = tmp->data;
 
       clutter_actor_lower_bottom (CLUTTER_ACTOR (window_actor));
     }
-
-  clutter_actor_lower_bottom (info->background_actor);
 }
 
 void
@@ -963,10 +875,7 @@ meta_compositor_sync_stack (MetaCompositor  *compositor,
 
           if (old_window->hidden &&
               !meta_window_actor_effect_in_progress (old_actor))
-            {
-              old_stack = g_list_delete_link (old_stack, old_stack);
-              old_actor = NULL;
-            }
+            old_stack = g_list_delete_link (old_stack, old_stack);
           else
             break;
         }
@@ -1017,7 +926,7 @@ meta_compositor_sync_stack (MetaCompositor  *compositor,
       old_stack = g_list_remove (old_stack, actor);
     }
 
-  sync_actor_stacking (info);
+  sync_actor_stacking (info->windows);
 }
 
 void
@@ -1074,8 +983,6 @@ meta_compositor_sync_screen_size (MetaCompositor  *compositor,
 
   clutter_actor_set_size (info->stage, width, height);
 
-  meta_background_actor_screen_size_changed (META_BACKGROUND_ACTOR (info->background_actor));
-
   meta_verbose ("Changed size for stage on screen %d to %dx%d\n",
 		meta_screen_get_screen_number (screen),
 		width, height);
@@ -1110,26 +1017,6 @@ meta_repaint_func (gpointer data)
   return TRUE;
 }
 
-static void
-on_shadow_factory_changed (MetaShadowFactory *factory,
-                           MetaCompositor    *compositor)
-{
-  GSList *screens = meta_display_get_screens (compositor->display);
-  GList *l;
-  GSList *sl;
-
-  for (sl = screens; sl; sl = sl->next)
-    {
-      MetaScreen *screen = sl->data;
-      MetaCompScreen *info = meta_screen_get_compositor_data (screen);
-      if (!info)
-        continue;
-
-      for (l = info->windows; l; l = l->next)
-        meta_window_actor_invalidate_shadow (l->data);
-    }
-}
-
 /**
  * meta_compositor_new: (skip)
  *
@@ -1159,11 +1046,6 @@ meta_compositor_new (MetaDisplay *display)
   meta_verbose ("Creating %d atoms\n", (int) G_N_ELEMENTS (atom_names));
   XInternAtoms (xdisplay, atom_names, G_N_ELEMENTS (atom_names),
                 False, atoms);
-
-  g_signal_connect (meta_shadow_factory_get_default (),
-                    "changed",
-                    G_CALLBACK (on_shadow_factory_changed),
-                    compositor);
 
   compositor->atom_x_root_pixmap = atoms[0];
   compositor->atom_x_set_root = atoms[1];

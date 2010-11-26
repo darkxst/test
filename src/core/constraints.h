@@ -25,9 +25,9 @@
 #ifndef META_CONSTRAINTS_H
 #define META_CONSTRAINTS_H
 
-#include <meta/util.h>
+#include "util.h"
 #include "window-private.h"
-#include "frame.h"
+#include "frame-private.h"
 
 typedef enum
 {

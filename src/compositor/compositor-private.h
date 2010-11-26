@@ -5,8 +5,8 @@
 
 #include <X11/extensions/Xfixes.h>
 
-#include <meta/compositor.h>
-#include <meta/display.h>
+#include "compositor.h"
+#include "display.h"
 #include "meta-plugin-manager.h"
 #include <clutter/clutter.h>
 
@@ -35,7 +35,6 @@ struct _MetaCompScreen
   MetaScreen            *screen;
 
   ClutterActor          *stage, *window_group, *overlay_group;
-  ClutterActor          *background_actor;
   ClutterActor		*hidden_group;
   GList                 *windows;
   GHashTable            *windows_by_xid;
