@@ -4,9 +4,11 @@ Author: Matthias Clasen
 Upstream bug report: https://bugzilla.gnome.org/show_bug.cgi?id=135056
 Ubuntu bug report: https://bugs.launchpad.net/bugs/111939
 
---- metacity-2.27.0/src/core/display.c	2009-06-07 21:35:13.623787399 -0400
-+++ hacked/src/core/display.c	2009-06-06 00:20:58.889278832 -0400
-@@ -3307,7 +3307,7 @@
+Index: mutter-2.91.2/src/core/display.c
+===================================================================
+--- mutter-2.91.2.orig/src/core/display.c	2010-11-26 11:26:40.062551001 +1100
++++ mutter-2.91.2/src/core/display.c	2010-11-26 11:26:43.422551001 +1100
+@@ -3564,7 +3564,7 @@
    meta_display_set_grab_op_cursor (display, screen, op, FALSE, grab_xwindow,
                                     timestamp);
  

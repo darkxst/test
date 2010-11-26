@@ -26,6 +26,7 @@
 #include <config.h>
 #include "workspace.h"
 #include "workspace-private.h"
+#include "boxes-private.h"
 #include "errors.h"
 #include "prefs.h"
 
@@ -706,7 +707,7 @@ meta_workspace_update_window_hints (MetaWorkspace *workspace)
 
 /**
  * meta_workspace_list_windows:
- * @display: a #MetaDisplay
+ * @workspace: a #MetaWorkspace
  *
  * Gets windows contained on the workspace, including workspace->windows
  * and also sticky windows. Override-redirect windows are not included.
@@ -764,7 +765,7 @@ set_active_space_hint (MetaScreen *screen)
                    screen->display->atom__NET_CURRENT_DESKTOP,
                    XA_CARDINAL,
                    32, PropModeReplace, (guchar*) data, 1);
-  meta_error_trap_pop (screen->display, FALSE);
+  meta_error_trap_pop (screen->display);
 }
 
 void
@@ -1048,7 +1049,7 @@ strut_lists_equal (GSList *l,
 /**
  * meta_workspace_set_builtin_struts:
  * @workspace: a #MetaWorkspace
- * @struts: (element-type Strut) (transfer none): list of #MetaStrut
+ * @struts: (element-type Meta.Strut) (transfer none): list of #MetaStrut
  *
  * Sets a list of struts that will be used in addition to the struts
  * of the windows in the workspace when computing the work area of
@@ -1256,7 +1257,8 @@ meta_workspace_focus_default_window (MetaWorkspace *workspace,
         }
       else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_SLOPPY)
         focus_ancestor_or_mru_window (workspace, not_this_one, timestamp);
-      else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_MOUSE)
+      else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_MOUSE ||
+               meta_prefs_get_focus_mode () == META_FOCUS_MODE_STRICT)
         {
           meta_topic (META_DEBUG_FOCUS,
                       "Setting focus to no_focus_window, since no valid "

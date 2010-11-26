@@ -4,19 +4,19 @@
 # Bug: https://bugzilla.gnome.org/show_bug.cgi?id=609563
 # Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/mutter/+bug/519856
 
-Index: mutter-2.31.2/src/core/prefs.c
+Index: mutter-2.91.2/src/core/prefs.c
 ===================================================================
---- mutter-2.31.2.orig/src/core/prefs.c	2010-04-18 02:44:38.000000000 +0200
-+++ mutter-2.31.2/src/core/prefs.c	2010-06-02 17:57:26.319480077 +0200
-@@ -103,6 +103,7 @@
- static int   cursor_size = 24;
+--- mutter-2.91.2.orig/src/core/prefs.c	2010-11-26 11:26:45.000000000 +1100
++++ mutter-2.91.2/src/core/prefs.c	2010-11-26 11:27:10.752551000 +1100
+@@ -105,6 +105,7 @@
  static gboolean compositing_manager = FALSE;
  static gboolean resize_with_right_button = FALSE;
+ static gboolean side_by_side_tiling = FALSE;
 +static gboolean hide_decorator_tooltip = FALSE;
  static gboolean force_fullscreen = TRUE;
  
  static MetaVisualBellType visual_bell_type = META_VISUAL_BELL_FULLSCREEN_FLASH;
-@@ -426,6 +427,11 @@
+@@ -439,6 +440,11 @@
        &no_tab_popup,
        FALSE,
      },
@@ -28,8 +28,8 @@ Index: mutter-2.31.2/src/core/prefs.c
      { NULL, 0, NULL, FALSE },
    };
  
-@@ -1494,6 +1500,12 @@
-   return raise_on_click || focus_mode == META_FOCUS_MODE_CLICK;
+@@ -1518,6 +1524,12 @@
+   return raise_on_click;
  }
  
 +gboolean
@@ -41,7 +41,7 @@ Index: mutter-2.31.2/src/core/prefs.c
  const char*
  meta_prefs_get_theme (void)
  {
-@@ -1992,6 +2004,9 @@
+@@ -2022,6 +2034,9 @@
  
      case META_PREF_NO_TAB_POPUP:
        return "NO_TAB_POPUP";
@@ -51,11 +51,11 @@ Index: mutter-2.31.2/src/core/prefs.c
      }
  
    return "(unknown)";
-Index: mutter-2.31.2/src/include/prefs.h
+Index: mutter-2.91.2/src/include/prefs.h
 ===================================================================
---- mutter-2.31.2.orig/src/include/prefs.h	2010-04-18 02:44:38.000000000 +0200
-+++ mutter-2.31.2/src/include/prefs.h	2010-06-02 17:59:31.512353158 +0200
-@@ -62,7 +62,8 @@
+--- mutter-2.91.2.orig/src/include/prefs.h	2010-10-21 07:15:21.000000000 +1100
++++ mutter-2.91.2/src/include/prefs.h	2010-11-26 11:26:54.632551001 +1100
+@@ -64,7 +64,8 @@
    META_PREF_FORCE_FULLSCREEN,
    META_PREF_CLUTTER_PLUGINS,
    META_PREF_LIVE_HIDDEN_WINDOWS,
@@ -65,25 +65,25 @@ Index: mutter-2.31.2/src/include/prefs.h
  } MetaPreference;
  
  typedef void (* MetaPrefsChangedFunc) (MetaPreference pref,
-@@ -86,6 +87,7 @@
- MetaFocusMode               meta_prefs_get_focus_mode         (void);
+@@ -89,6 +90,7 @@
  MetaFocusNewWindows         meta_prefs_get_focus_new_windows  (void);
+ gboolean                    meta_prefs_get_attach_modal_dialogs (void);
  gboolean                    meta_prefs_get_raise_on_click     (void);
 +gboolean                    meta_prefs_get_hide_decorator_tooltip (void);
  const char*                 meta_prefs_get_theme              (void);
  /* returns NULL if GTK default should be used */
  const PangoFontDescription* meta_prefs_get_titlebar_font      (void);
-Index: mutter-2.31.2/src/ui/frames.c
+Index: mutter-2.91.2/src/ui/frames.c
 ===================================================================
---- mutter-2.31.2.orig/src/ui/frames.c	2010-05-13 16:13:45.000000000 +0200
-+++ mutter-2.31.2/src/ui/frames.c	2010-06-02 17:57:07.099338161 +0200
-@@ -1121,6 +1121,9 @@
+--- mutter-2.91.2.orig/src/ui/frames.c	2010-11-04 10:09:02.000000000 +1100
++++ mutter-2.91.2/src/ui/frames.c	2010-11-26 11:27:38.692551000 +1100
+@@ -1084,6 +1084,9 @@
    if (frame == NULL)
      return;
  
 +  if (meta_prefs_get_hide_decorator_tooltip ())
 +    return;
 +
-   XQueryPointer (gdk_display,
-                  frame->xwindow,
-                  &root, &child,
+   display = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
+ 
+   XQueryPointer (display,

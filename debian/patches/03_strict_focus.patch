@@ -1,11 +1,11 @@
 Description: Strict focus mode (/apps/metacity/general/focus_mode = strict)
 Author: LaMont Jones <lamont at debian.org>
 
-Index: mutter-2.31.2/src/core/display.c
+Index: mutter-2.91.2/src/core/display.c
 ===================================================================
---- mutter-2.31.2.orig/src/core/display.c	2010-05-25 19:24:30.000000000 +0200
-+++ mutter-2.31.2/src/core/display.c	2010-06-23 21:58:39.857704000 +0200
-@@ -2009,6 +2009,7 @@
+--- mutter-2.91.2.orig/src/core/display.c	2010-11-04 10:09:02.000000000 +1100
++++ mutter-2.91.2/src/core/display.c	2010-11-26 11:26:40.062551001 +1100
+@@ -2019,6 +2019,7 @@
          {
            switch (meta_prefs_get_focus_mode ())
              {
@@ -13,11 +13,11 @@ Index: mutter-2.31.2/src/core/display.c
              case META_FOCUS_MODE_SLOPPY:
              case META_FOCUS_MODE_MOUSE:
                display->mouse_mode = TRUE;
-Index: mutter-2.31.2/src/core/prefs.c
+Index: mutter-2.91.2/src/core/prefs.c
 ===================================================================
---- mutter-2.31.2.orig/src/core/prefs.c	2010-04-18 02:44:38.000000000 +0200
-+++ mutter-2.31.2/src/core/prefs.c	2010-06-23 21:58:39.857704000 +0200
-@@ -197,6 +197,7 @@
+--- mutter-2.91.2.orig/src/core/prefs.c	2010-10-24 06:48:29.000000000 +1100
++++ mutter-2.91.2/src/core/prefs.c	2010-11-26 11:26:40.062551001 +1100
+@@ -199,6 +199,7 @@
      { META_FOCUS_MODE_CLICK,  "click" },
      { META_FOCUS_MODE_SLOPPY, "sloppy" },
      { META_FOCUS_MODE_MOUSE,  "mouse" },
@@ -25,11 +25,11 @@ Index: mutter-2.31.2/src/core/prefs.c
      { 0, NULL },
    };
  
-Index: mutter-2.31.2/src/core/window.c
+Index: mutter-2.91.2/src/core/window.c
 ===================================================================
---- mutter-2.31.2.orig/src/core/window.c	2010-05-21 13:09:21.000000000 +0200
-+++ mutter-2.31.2/src/core/window.c	2010-06-23 21:59:56.961704001 +0200
-@@ -2697,7 +2697,7 @@
+--- mutter-2.91.2.orig/src/core/window.c	2010-11-04 10:09:02.000000000 +1100
++++ mutter-2.91.2/src/core/window.c	2010-11-26 11:26:40.072551001 +1100
+@@ -2708,7 +2708,7 @@
    if (window->showing_for_first_time)
      {
        window->showing_for_first_time = FALSE;
@@ -38,11 +38,11 @@ Index: mutter-2.31.2/src/core/window.c
          {
            guint32     timestamp;
  
-Index: mutter-2.31.2/src/core/workspace.c
+Index: mutter-2.91.2/src/core/workspace.c
 ===================================================================
---- mutter-2.31.2.orig/src/core/workspace.c	2010-04-18 02:44:38.000000000 +0200
-+++ mutter-2.31.2/src/core/workspace.c	2010-06-23 21:58:39.869704000 +0200
-@@ -1256,7 +1256,8 @@
+--- mutter-2.91.2.orig/src/core/workspace.c	2010-11-04 10:09:02.000000000 +1100
++++ mutter-2.91.2/src/core/workspace.c	2010-11-26 11:26:40.072551001 +1100
+@@ -1257,7 +1257,8 @@
          }
        else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_SLOPPY)
          focus_ancestor_or_mru_window (workspace, not_this_one, timestamp);
@@ -52,10 +52,10 @@ Index: mutter-2.31.2/src/core/workspace.c
          {
            meta_topic (META_DEBUG_FOCUS,
                        "Setting focus to no_focus_window, since no valid "
-Index: mutter-2.31.2/src/include/common.h
+Index: mutter-2.91.2/src/include/common.h
 ===================================================================
---- mutter-2.31.2.orig/src/include/common.h	2010-04-26 23:00:19.000000000 +0200
-+++ mutter-2.31.2/src/include/common.h	2010-06-23 21:58:39.873704000 +0200
+--- mutter-2.91.2.orig/src/include/common.h	2010-11-09 02:25:19.000000000 +1100
++++ mutter-2.91.2/src/include/common.h	2010-11-26 11:26:40.072551001 +1100
 @@ -165,7 +165,8 @@
  {
    META_FOCUS_MODE_CLICK,

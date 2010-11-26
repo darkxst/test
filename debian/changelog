@@ -1,3 +1,29 @@
+mutter (2.91.2-0ubuntu1) natty; urgency=low
+
+  * New upstream release
+  * debian/control:
+    - Bump build-depends on gobject-introspection, libgtk3.0-dev
+    - Add build-depends on libcairo2-dev, libcanberra-gtk3-dev
+    - Drop obsolete build-depends on gir-repository-dev
+    - Use standards-version 3.9.1
+  * debian/rules:
+    - Drop patchsys-quilt.mk
+  * debian/source:
+    - Use source version 3.0
+  * debian/patches/00_git_cairo_api.patch:
+  * debian/patches/00_git_get_back_pixmap.patch:
+  * debian/patches/92_handle_event_mask_when_managing_window.patch:
+    - Applied upstream
+  * debian/patches/14_wrong_colormap.patch:
+  * debian/patches/16_paint_clone_unclipped.patch:
+  * debian/patches/18_unmimize.patch:
+  * debian/patches/20_unity_no_3D_detection.patch:
+  * debian/patches/91_add_window_groups.patch:
+  * debian/patches/95_workaround_gdk_compat.patch:
+    - Dropped, obsolete
+
+ -- Robert Ancell <robert.ancell@canonical.com>  Fri, 26 Nov 2010 11:20:46 +1100
+
 mutter (2.31.5-0ubuntu9) maverick; urgency=low
 
   * debian/patches/20_unity_no_3D_detection.patch:
