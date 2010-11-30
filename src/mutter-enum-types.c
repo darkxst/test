@@ -409,6 +409,7 @@ meta_frame_type_get_type (void)
         { META_FRAME_TYPE_UTILITY, "META_FRAME_TYPE_UTILITY", "utility" },
         { META_FRAME_TYPE_MENU, "META_FRAME_TYPE_MENU", "menu" },
         { META_FRAME_TYPE_BORDER, "META_FRAME_TYPE_BORDER", "border" },
+        { META_FRAME_TYPE_ATTACHED, "META_FRAME_TYPE_ATTACHED", "attached" },
         { META_FRAME_TYPE_LAST, "META_FRAME_TYPE_LAST", "last" },
         { 0, NULL, NULL }
       };

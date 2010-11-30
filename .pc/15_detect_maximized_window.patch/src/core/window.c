@@ -3158,6 +3158,32 @@ meta_window_maximize (MetaWindow        *window,
     }
 }
 
+/**
+ * meta_window_get_maximized:
+ *
+ * Gets the current maximization state of the window, as combination
+ * of the %META_MAXIMIZE_HORIZONTAL and %META_MAXIMIZE_VERTICAL flags;
+ *
+ * Return value: current maximization state
+ */
+MetaMaximizeFlags
+meta_window_get_maximized (MetaWindow *window)
+{
+  return ((window->maximized_horizontally ? META_MAXIMIZE_HORIZONTAL : 0) |
+          (window->maximized_vertically ? META_MAXIMIZE_VERTICAL : 0));
+}
+
+/**
+ * meta_window_is_fullscreen:
+ *
+ * Return value: %TRUE if the window is currently fullscreen
+ */
+gboolean
+meta_window_is_fullscreen (MetaWindow *window)
+{
+  return window->fullscreen;
+}
+
 static void
 meta_window_tile (MetaWindow *window)
 {
@@ -9275,9 +9301,22 @@ transient_has_focus (MetaWindow *window,
   return FALSE;
 }
 
+/**
+ * meta_window_appears_focused:
+ * @window: a #MetaWindow
+ *
+ * Determines if the window should be drawn with a focused appearance. This is
+ * true for focused windows but also true for windows with a focused modal
+ * dialog attached.
+ *
+ * Return value: %TRUE if the window should be drawn with a focused frame
+ */
 gboolean
 meta_window_appears_focused (MetaWindow *window)
 {
+  /* FIXME: meta_window_foreach_transient() iterates over all windows; we
+   *  should eat the complexity to cache a bit for this.
+   */
   if (!window->has_focus && meta_prefs_get_attach_modal_dialogs ())
     {
       gboolean focus = FALSE;
@@ -9654,4 +9693,75 @@ meta_window_get_mutter_hints (MetaWindow *window)
   g_return_val_if_fail (META_IS_WINDOW (window), NULL);
 
   return window->mutter_hints;
+}
+
+/**
+ * meta_window_get_frame_type:
+ * @window: a #MetaWindow
+ *
+ * Gets the type of window decorations that should be used for this window.
+ *
+ * Return value: the frame type
+ */
+MetaFrameType
+meta_window_get_frame_type (MetaWindow *window)
+{
+  MetaFrameType base_type = META_FRAME_TYPE_LAST;
+
+  switch (window->type)
+    {
+    case META_WINDOW_NORMAL:
+      base_type = META_FRAME_TYPE_NORMAL;
+      break;
+
+    case META_WINDOW_DIALOG:
+      base_type = META_FRAME_TYPE_DIALOG;
+      break;
+
+    case META_WINDOW_MODAL_DIALOG:
+      if (meta_prefs_get_attach_modal_dialogs () &&
+          meta_window_get_transient_for (window) != NULL)
+        base_type = META_FRAME_TYPE_ATTACHED;
+      else
+        base_type = META_FRAME_TYPE_MODAL_DIALOG;
+      break;
+
+    case META_WINDOW_MENU:
+      base_type = META_FRAME_TYPE_MENU;
+      break;
+
+    case META_WINDOW_UTILITY:
+      base_type = META_FRAME_TYPE_UTILITY;
+      break;
+
+    case META_WINDOW_DESKTOP:
+    case META_WINDOW_DOCK:
+    case META_WINDOW_TOOLBAR:
+    case META_WINDOW_SPLASHSCREEN:
+    case META_WINDOW_DROPDOWN_MENU:
+    case META_WINDOW_POPUP_MENU:
+    case META_WINDOW_TOOLTIP:
+    case META_WINDOW_NOTIFICATION:
+    case META_WINDOW_COMBO:
+    case META_WINDOW_DND:
+    case META_WINDOW_OVERRIDE_OTHER:
+      /* No frame */
+      base_type = META_FRAME_TYPE_LAST;
+      break;
+    }
+
+  if (base_type == META_FRAME_TYPE_LAST)
+    {
+      /* can't add border if undecorated */
+      return META_FRAME_TYPE_LAST;
+    }
+  else if (window->border_only && base_type != META_FRAME_TYPE_ATTACHED)
+    {
+      /* override base frame type */
+      return META_FRAME_TYPE_BORDER;
+    }
+  else
+    {
+      return base_type;
+    }
 }

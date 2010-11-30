@@ -1,3 +1,9 @@
+mutter (2.91.3-0ubuntu1) natty; urgency=low
+
+  * New upstream release
+
+ -- Robert Ancell <robert.ancell@canonical.com>  Tue, 30 Nov 2010 10:56:20 +1100
+
 mutter (2.91.2-0ubuntu1) natty; urgency=low
 
   * New upstream release

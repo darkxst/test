@@ -96,13 +96,14 @@ libmutter_private_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 PROGRAMS = $(bin_PROGRAMS) $(noinst_PROGRAMS)
 am__objects_1 = mutter-marshal.$(OBJEXT) mutter-enum-types.$(OBJEXT)
 am_mutter_OBJECTS = async-getprop.$(OBJEXT) bell.$(OBJEXT) \
-	boxes.$(OBJEXT) compositor.$(OBJEXT) meta-module.$(OBJEXT) \
+	boxes.$(OBJEXT) cogl-utils.$(OBJEXT) compositor.$(OBJEXT) \
+	meta-background-actor.$(OBJEXT) meta-module.$(OBJEXT) \
 	meta-plugin.$(OBJEXT) meta-plugin-manager.$(OBJEXT) \
-	meta-shaped-texture.$(OBJEXT) meta-texture-tower.$(OBJEXT) \
-	meta-window-actor.$(OBJEXT) meta-window-group.$(OBJEXT) \
-	shadow.$(OBJEXT) tidy-texture-frame.$(OBJEXT) \
-	constraints.$(OBJEXT) core.$(OBJEXT) delete.$(OBJEXT) \
-	display.$(OBJEXT) draw-workspace.$(OBJEXT) \
+	meta-shadow-factory.$(OBJEXT) meta-shaped-texture.$(OBJEXT) \
+	meta-texture-tower.$(OBJEXT) meta-window-actor.$(OBJEXT) \
+	meta-window-group.$(OBJEXT) meta-window-shape.$(OBJEXT) \
+	region-utils.$(OBJEXT) constraints.$(OBJEXT) core.$(OBJEXT) \
+	delete.$(OBJEXT) display.$(OBJEXT) draw-workspace.$(OBJEXT) \
 	edge-resistance.$(OBJEXT) errors.$(OBJEXT) \
 	eventqueue.$(OBJEXT) frame.$(OBJEXT) gradient.$(OBJEXT) \
 	group-props.$(OBJEXT) group.$(OBJEXT) iconcache.$(OBJEXT) \
@@ -422,13 +423,19 @@ mutter_SOURCES = \
 	core/boxes.c				\
 	core/boxes-private.h			\
 	include/boxes.h				\
+	compositor/cogl-utils.c			\
+	compositor/cogl-utils.h			\
 	compositor/compositor.c			\
 	compositor/compositor-private.h		\
+	compositor/meta-background-actor.c	\
+	compositor/meta-background-actor.h	\
 	compositor/meta-module.c		\
 	compositor/meta-module.h		\
 	compositor/meta-plugin.c		\
 	compositor/meta-plugin-manager.c	\
 	compositor/meta-plugin-manager.h	\
+	compositor/meta-shadow-factory.c	\
+	compositor/meta-shadow-factory-private.h	\
 	compositor/meta-shaped-texture.c	\
 	compositor/meta-shaped-texture.h	\
 	compositor/meta-texture-tower.c		\
@@ -437,12 +444,13 @@ mutter_SOURCES = \
 	compositor/meta-window-actor-private.h	\
 	compositor/meta-window-group.c		\
 	compositor/meta-window-group.h		\
-	compositor/shadow.c			\
-	compositor/shadow.h			\
-	compositor/tidy/tidy-texture-frame.c	\
-	compositor/tidy/tidy-texture-frame.h	\
+	compositor/meta-window-shape.c		\
+	compositor/meta-window-shape.h		\
+	compositor/region-utils.c		\
+	compositor/region-utils.h		\
 	include/compositor.h			\
 	include/meta-plugin.h			\
+	include/meta-shadow-factory.h		\
 	include/meta-window-actor.h		\
 	include/compositor-mutter.h 		\
 	core/constraints.c			\
@@ -569,6 +577,7 @@ libmutterinclude_base_headers = \
 	include/group.h				\
 	include/keybindings.h			\
 	include/meta-plugin.h			\
+	include/meta-shadow-factory.h		\
 	include/meta-window-actor.h
 
 
@@ -790,6 +799,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/async-getprop.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bell.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/boxes.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cogl-utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/compositor.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/constraints.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/core.Po@am__quote@
@@ -815,22 +825,25 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libmutter_private_la-util.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/menu.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-background-actor.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-module.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-plugin-manager.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-plugin.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-shadow-factory.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-shaped-texture.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-texture-tower.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-window-actor.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-window-group.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/meta-window-shape.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/metaaccellabel.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mutter-enum-types.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mutter-marshal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/place.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/prefs.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/region-utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/resizepopup.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/screen.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/session.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/shadow.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stack-tracker.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stack.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tabpopup.Po@am__quote@
@@ -840,7 +853,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/theme-parser.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/theme-viewer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/theme.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tidy-texture-frame.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tile-preview.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ui.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/util.Po@am__quote@
@@ -969,6 +981,22 @@ boxes.obj: core/boxes.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o boxes.obj `if test -f 'core/boxes.c'; then $(CYGPATH_W) 'core/boxes.c'; else $(CYGPATH_W) '$(srcdir)/core/boxes.c'; fi`
 
+cogl-utils.o: compositor/cogl-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT cogl-utils.o -MD -MP -MF $(DEPDIR)/cogl-utils.Tpo -c -o cogl-utils.o `test -f 'compositor/cogl-utils.c' || echo '$(srcdir)/'`compositor/cogl-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/cogl-utils.Tpo $(DEPDIR)/cogl-utils.Po
+@am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/cogl-utils.c' object='cogl-utils.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o cogl-utils.o `test -f 'compositor/cogl-utils.c' || echo '$(srcdir)/'`compositor/cogl-utils.c
+
+cogl-utils.obj: compositor/cogl-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT cogl-utils.obj -MD -MP -MF $(DEPDIR)/cogl-utils.Tpo -c -o cogl-utils.obj `if test -f 'compositor/cogl-utils.c'; then $(CYGPATH_W) 'compositor/cogl-utils.c'; else $(CYGPATH_W) '$(srcdir)/compositor/cogl-utils.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/cogl-utils.Tpo $(DEPDIR)/cogl-utils.Po
+@am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/cogl-utils.c' object='cogl-utils.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o cogl-utils.obj `if test -f 'compositor/cogl-utils.c'; then $(CYGPATH_W) 'compositor/cogl-utils.c'; else $(CYGPATH_W) '$(srcdir)/compositor/cogl-utils.c'; fi`
+
 compositor.o: compositor/compositor.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT compositor.o -MD -MP -MF $(DEPDIR)/compositor.Tpo -c -o compositor.o `test -f 'compositor/compositor.c' || echo '$(srcdir)/'`compositor/compositor.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/compositor.Tpo $(DEPDIR)/compositor.Po
@@ -984,6 +1012,22 @@ compositor.obj: compositor/compositor.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/compositor.c' object='compositor.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o compositor.obj `if test -f 'compositor/compositor.c'; then $(CYGPATH_W) 'compositor/compositor.c'; else $(CYGPATH_W) '$(srcdir)/compositor/compositor.c'; fi`
+
+meta-background-actor.o: compositor/meta-background-actor.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-background-actor.o -MD -MP -MF $(DEPDIR)/meta-background-actor.Tpo -c -o meta-background-actor.o `test -f 'compositor/meta-background-actor.c' || echo '$(srcdir)/'`compositor/meta-background-actor.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/meta-background-actor.Tpo $(DEPDIR)/meta-background-actor.Po
+@am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-background-actor.c' object='meta-background-actor.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-background-actor.o `test -f 'compositor/meta-background-actor.c' || echo '$(srcdir)/'`compositor/meta-background-actor.c
+
+meta-background-actor.obj: compositor/meta-background-actor.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-background-actor.obj -MD -MP -MF $(DEPDIR)/meta-background-actor.Tpo -c -o meta-background-actor.obj `if test -f 'compositor/meta-background-actor.c'; then $(CYGPATH_W) 'compositor/meta-background-actor.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-background-actor.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/meta-background-actor.Tpo $(DEPDIR)/meta-background-actor.Po
+@am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-background-actor.c' object='meta-background-actor.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-background-actor.obj `if test -f 'compositor/meta-background-actor.c'; then $(CYGPATH_W) 'compositor/meta-background-actor.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-background-actor.c'; fi`
 
 meta-module.o: compositor/meta-module.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-module.o -MD -MP -MF $(DEPDIR)/meta-module.Tpo -c -o meta-module.o `test -f 'compositor/meta-module.c' || echo '$(srcdir)/'`compositor/meta-module.c
@@ -1032,6 +1076,22 @@ meta-plugin-manager.obj: compositor/meta-plugin-manager.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-plugin-manager.c' object='meta-plugin-manager.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-plugin-manager.obj `if test -f 'compositor/meta-plugin-manager.c'; then $(CYGPATH_W) 'compositor/meta-plugin-manager.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-plugin-manager.c'; fi`
+
+meta-shadow-factory.o: compositor/meta-shadow-factory.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-shadow-factory.o -MD -MP -MF $(DEPDIR)/meta-shadow-factory.Tpo -c -o meta-shadow-factory.o `test -f 'compositor/meta-shadow-factory.c' || echo '$(srcdir)/'`compositor/meta-shadow-factory.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/meta-shadow-factory.Tpo $(DEPDIR)/meta-shadow-factory.Po
+@am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-shadow-factory.c' object='meta-shadow-factory.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-shadow-factory.o `test -f 'compositor/meta-shadow-factory.c' || echo '$(srcdir)/'`compositor/meta-shadow-factory.c
+
+meta-shadow-factory.obj: compositor/meta-shadow-factory.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-shadow-factory.obj -MD -MP -MF $(DEPDIR)/meta-shadow-factory.Tpo -c -o meta-shadow-factory.obj `if test -f 'compositor/meta-shadow-factory.c'; then $(CYGPATH_W) 'compositor/meta-shadow-factory.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-shadow-factory.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/meta-shadow-factory.Tpo $(DEPDIR)/meta-shadow-factory.Po
+@am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-shadow-factory.c' object='meta-shadow-factory.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-shadow-factory.obj `if test -f 'compositor/meta-shadow-factory.c'; then $(CYGPATH_W) 'compositor/meta-shadow-factory.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-shadow-factory.c'; fi`
 
 meta-shaped-texture.o: compositor/meta-shaped-texture.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-shaped-texture.o -MD -MP -MF $(DEPDIR)/meta-shaped-texture.Tpo -c -o meta-shaped-texture.o `test -f 'compositor/meta-shaped-texture.c' || echo '$(srcdir)/'`compositor/meta-shaped-texture.c
@@ -1097,37 +1157,37 @@ meta-window-group.obj: compositor/meta-window-group.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-window-group.obj `if test -f 'compositor/meta-window-group.c'; then $(CYGPATH_W) 'compositor/meta-window-group.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-window-group.c'; fi`
 
-shadow.o: compositor/shadow.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT shadow.o -MD -MP -MF $(DEPDIR)/shadow.Tpo -c -o shadow.o `test -f 'compositor/shadow.c' || echo '$(srcdir)/'`compositor/shadow.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/shadow.Tpo $(DEPDIR)/shadow.Po
+meta-window-shape.o: compositor/meta-window-shape.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-window-shape.o -MD -MP -MF $(DEPDIR)/meta-window-shape.Tpo -c -o meta-window-shape.o `test -f 'compositor/meta-window-shape.c' || echo '$(srcdir)/'`compositor/meta-window-shape.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/meta-window-shape.Tpo $(DEPDIR)/meta-window-shape.Po
 @am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/shadow.c' object='shadow.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-window-shape.c' object='meta-window-shape.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o shadow.o `test -f 'compositor/shadow.c' || echo '$(srcdir)/'`compositor/shadow.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-window-shape.o `test -f 'compositor/meta-window-shape.c' || echo '$(srcdir)/'`compositor/meta-window-shape.c
 
-shadow.obj: compositor/shadow.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT shadow.obj -MD -MP -MF $(DEPDIR)/shadow.Tpo -c -o shadow.obj `if test -f 'compositor/shadow.c'; then $(CYGPATH_W) 'compositor/shadow.c'; else $(CYGPATH_W) '$(srcdir)/compositor/shadow.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/shadow.Tpo $(DEPDIR)/shadow.Po
+meta-window-shape.obj: compositor/meta-window-shape.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT meta-window-shape.obj -MD -MP -MF $(DEPDIR)/meta-window-shape.Tpo -c -o meta-window-shape.obj `if test -f 'compositor/meta-window-shape.c'; then $(CYGPATH_W) 'compositor/meta-window-shape.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-window-shape.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/meta-window-shape.Tpo $(DEPDIR)/meta-window-shape.Po
 @am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/shadow.c' object='shadow.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/meta-window-shape.c' object='meta-window-shape.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o shadow.obj `if test -f 'compositor/shadow.c'; then $(CYGPATH_W) 'compositor/shadow.c'; else $(CYGPATH_W) '$(srcdir)/compositor/shadow.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o meta-window-shape.obj `if test -f 'compositor/meta-window-shape.c'; then $(CYGPATH_W) 'compositor/meta-window-shape.c'; else $(CYGPATH_W) '$(srcdir)/compositor/meta-window-shape.c'; fi`
 
-tidy-texture-frame.o: compositor/tidy/tidy-texture-frame.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT tidy-texture-frame.o -MD -MP -MF $(DEPDIR)/tidy-texture-frame.Tpo -c -o tidy-texture-frame.o `test -f 'compositor/tidy/tidy-texture-frame.c' || echo '$(srcdir)/'`compositor/tidy/tidy-texture-frame.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/tidy-texture-frame.Tpo $(DEPDIR)/tidy-texture-frame.Po
+region-utils.o: compositor/region-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT region-utils.o -MD -MP -MF $(DEPDIR)/region-utils.Tpo -c -o region-utils.o `test -f 'compositor/region-utils.c' || echo '$(srcdir)/'`compositor/region-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/region-utils.Tpo $(DEPDIR)/region-utils.Po
 @am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/tidy/tidy-texture-frame.c' object='tidy-texture-frame.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/region-utils.c' object='region-utils.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o tidy-texture-frame.o `test -f 'compositor/tidy/tidy-texture-frame.c' || echo '$(srcdir)/'`compositor/tidy/tidy-texture-frame.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o region-utils.o `test -f 'compositor/region-utils.c' || echo '$(srcdir)/'`compositor/region-utils.c
 
-tidy-texture-frame.obj: compositor/tidy/tidy-texture-frame.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT tidy-texture-frame.obj -MD -MP -MF $(DEPDIR)/tidy-texture-frame.Tpo -c -o tidy-texture-frame.obj `if test -f 'compositor/tidy/tidy-texture-frame.c'; then $(CYGPATH_W) 'compositor/tidy/tidy-texture-frame.c'; else $(CYGPATH_W) '$(srcdir)/compositor/tidy/tidy-texture-frame.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/tidy-texture-frame.Tpo $(DEPDIR)/tidy-texture-frame.Po
+region-utils.obj: compositor/region-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT region-utils.obj -MD -MP -MF $(DEPDIR)/region-utils.Tpo -c -o region-utils.obj `if test -f 'compositor/region-utils.c'; then $(CYGPATH_W) 'compositor/region-utils.c'; else $(CYGPATH_W) '$(srcdir)/compositor/region-utils.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/region-utils.Tpo $(DEPDIR)/region-utils.Po
 @am__fastdepCC_FALSE@	$(AM_V_CC) @AM_BACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/tidy/tidy-texture-frame.c' object='tidy-texture-frame.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='compositor/region-utils.c' object='region-utils.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o tidy-texture-frame.obj `if test -f 'compositor/tidy/tidy-texture-frame.c'; then $(CYGPATH_W) 'compositor/tidy/tidy-texture-frame.c'; else $(CYGPATH_W) '$(srcdir)/compositor/tidy/tidy-texture-frame.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o region-utils.obj `if test -f 'compositor/region-utils.c'; then $(CYGPATH_W) 'compositor/region-utils.c'; else $(CYGPATH_W) '$(srcdir)/compositor/region-utils.c'; fi`
 
 constraints.o: core/constraints.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT constraints.o -MD -MP -MF $(DEPDIR)/constraints.Tpo -c -o constraints.o `test -f 'core/constraints.c' || echo '$(srcdir)/'`core/constraints.c

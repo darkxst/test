@@ -1,10 +1,8 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
-
 /*
- * Copyright (C) 2008 Matthew Allum
- * Copyright (C) 2007 Iain Holmes
- * Based on xcompmgr - (c) 2003 Keith Packard
- *          xfwm4    - (c) 2005-2007 Olivier Fourdan
+ * Utilities for use with Cogl
+ *
+ * Copyright 2010 Red Hat, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -22,23 +20,15 @@
  * 02111-1307, USA.
  */
 
-#ifndef MUTTER_H_
-#define MUTTER_H_
+#ifndef __META_COGL_UTILS_H__
+#define __META_COGL_UTILS_H__
 
-#include <clutter/clutter.h>
-#include <X11/Xlib.h>
+#include <cogl/cogl.h>
 
-#include "types.h"
-#include "compositor.h"
-#include "meta-window-actor.h"
+CoglHandle meta_create_color_texture_4ub (guint8     red,
+                                          guint8     green,
+                                          guint8     blue,
+                                          guint8     alpha);
+CoglHandle meta_create_texture_material  (CoglHandle src_texture);
 
-/* Public compositor API */
-ClutterActor *meta_get_stage_for_screen         (MetaScreen *screen);
-ClutterActor *meta_get_overlay_group_for_screen (MetaScreen *screen);
-Window        meta_get_overlay_window           (MetaScreen *screen);
-GList        *meta_get_window_actors            (MetaScreen *screen);
-ClutterActor *meta_get_window_group_for_screen  (MetaScreen *screen);
-
-ClutterActor *meta_get_background_actor_for_screen (MetaScreen *screen);
-
-#endif
+#endif /* __META_COGL_UTILS_H__ */

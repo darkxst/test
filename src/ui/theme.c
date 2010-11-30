@@ -4993,7 +4993,7 @@ meta_theme_validate (MetaTheme *theme,
     }
 
   for (i = 0; i < (int)META_FRAME_TYPE_LAST; i++)
-    if (theme->style_sets_by_type[i] == NULL)
+    if (i != (int)META_FRAME_TYPE_ATTACHED && theme->style_sets_by_type[i] == NULL)
       {
         g_set_error (error, META_THEME_ERROR, META_THEME_ERROR_FAILED,
                      _("No frame style set for window type \"%s\" in theme \"%s\", add a <window type=\"%s\" style_set=\"whatever\"/> element"),
@@ -5075,7 +5075,10 @@ theme_get_style (MetaTheme     *theme,
 
   style_set = theme->style_sets_by_type[type];
 
-  /* Right now the parser forces a style set for all types,
+  if (style_set == NULL && type == META_FRAME_TYPE_ATTACHED)
+    style_set = theme->style_sets_by_type[META_FRAME_TYPE_BORDER];
+
+  /* Right now the parser forces a style set for all other types,
    * but this fallback code is here in case I take that out.
    */
   if (style_set == NULL)
@@ -6005,6 +6008,8 @@ meta_frame_type_from_string (const char *str)
     return META_FRAME_TYPE_MENU;
   else if (strcmp ("border", str) == 0)
     return META_FRAME_TYPE_BORDER;
+  else if (strcmp ("attached", str) == 0)
+    return META_FRAME_TYPE_ATTACHED;
 #if 0
   else if (strcmp ("toolbar", str) == 0)
     return META_FRAME_TYPE_TOOLBAR;
@@ -6013,6 +6018,14 @@ meta_frame_type_from_string (const char *str)
     return META_FRAME_TYPE_LAST;
 }
 
+/**
+ * meta_frame_type_to_string:
+ *
+ * Converts a frame type enum value to the name string that would
+ * appear in the theme definition file.
+ *
+ * Return value: the string value
+ */
 const char*
 meta_frame_type_to_string (MetaFrameType type)
 {
@@ -6030,6 +6043,8 @@ meta_frame_type_to_string (MetaFrameType type)
       return "menu";
     case META_FRAME_TYPE_BORDER:
       return "border";
+    case META_FRAME_TYPE_ATTACHED:
+      return "attached";
 #if 0
     case META_FRAME_TYPE_TOOLBAR:
       return "toolbar";

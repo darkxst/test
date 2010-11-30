@@ -21,13 +21,19 @@ mutter_SOURCES= 				\
 	core/boxes.c				\
 	core/boxes-private.h			\
 	include/boxes.h				\
+	compositor/cogl-utils.c			\
+	compositor/cogl-utils.h			\
 	compositor/compositor.c			\
 	compositor/compositor-private.h		\
+	compositor/meta-background-actor.c	\
+	compositor/meta-background-actor.h	\
 	compositor/meta-module.c		\
 	compositor/meta-module.h		\
 	compositor/meta-plugin.c		\
 	compositor/meta-plugin-manager.c	\
 	compositor/meta-plugin-manager.h	\
+	compositor/meta-shadow-factory.c	\
+	compositor/meta-shadow-factory-private.h	\
 	compositor/meta-shaped-texture.c	\
 	compositor/meta-shaped-texture.h	\
 	compositor/meta-texture-tower.c		\
@@ -36,12 +42,13 @@ mutter_SOURCES= 				\
 	compositor/meta-window-actor-private.h	\
 	compositor/meta-window-group.c		\
 	compositor/meta-window-group.h		\
-	compositor/shadow.c			\
-	compositor/shadow.h			\
-	compositor/tidy/tidy-texture-frame.c	\
-	compositor/tidy/tidy-texture-frame.h	\
+	compositor/meta-window-shape.c		\
+	compositor/meta-window-shape.h		\
+	compositor/region-utils.c		\
+	compositor/region-utils.h		\
 	include/compositor.h			\
 	include/meta-plugin.h			\
+	include/meta-shadow-factory.h		\
 	include/meta-window-actor.h		\
 	include/compositor-mutter.h 		\
 	core/constraints.c			\
@@ -167,6 +174,7 @@ libmutterinclude_base_headers =		\
 	include/group.h				\
 	include/keybindings.h			\
 	include/meta-plugin.h			\
+	include/meta-shadow-factory.h		\
 	include/meta-window-actor.h
 
 # Excluded from scanning for introspection but installed

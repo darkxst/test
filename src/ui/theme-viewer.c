@@ -234,7 +234,7 @@ dialog_contents (void)
   
   vbox = gtk_vbox_new (FALSE, 0);
 
-  action_area = gtk_hbutton_box_new ();
+  action_area = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 
   gtk_button_box_set_layout (GTK_BUTTON_BOX (action_area),
                              GTK_BUTTONBOX_END);  
@@ -407,6 +407,10 @@ get_window_contents (MetaFrameType  type,
     case META_FRAME_TYPE_BORDER:
       *title = _("Border");
       return border_only_contents ();
+
+    case META_FRAME_TYPE_ATTACHED:
+      *title = _("Attached Modal Dialog");
+      return dialog_contents ();
       
     case META_FRAME_TYPE_LAST:
       g_assert_not_reached ();
@@ -453,6 +457,9 @@ get_window_flags (MetaFrameType type)
       break;
 
     case META_FRAME_TYPE_BORDER:
+      break;
+
+    case META_FRAME_TYPE_ATTACHED:
       break;
       
     case META_FRAME_TYPE_LAST:
