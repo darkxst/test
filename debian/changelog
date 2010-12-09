@@ -1,3 +1,9 @@
+mutter (2.91.3-0ubuntu1+build1) natty; urgency=low
+
+  * No-change rebuild for libgirepository rename
+
+ -- Michael Terry <mterry@ubuntu.com>  Thu, 09 Dec 2010 08:44:22 -0500
+
 mutter (2.91.3-0ubuntu1) natty; urgency=low
 
   * New upstream release
