@@ -7,4 +7,7 @@
 13_better_support_for_button_layout.patch
 15_detect_maximized_window.patch
 17_add_overlay_key_signals.patch
+18_gtk3_gdk_macros.patch
+19_gtk3_theme_states.patch
+20_gtk3_testgradient.patch
 99_ltmain_as-needed.patch
