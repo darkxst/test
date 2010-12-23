@@ -1,13 +1,11 @@
-mutter (2.91.3-0ubuntu2) natty; urgency=low
+mutter (2.91.4-0ubuntu1) natty; urgency=low
 
-  * Rebuild for libgirepository rename
-  * debian/patches/18_gtk3_gdk_macros.patch,
-    debian/patches/19_gtk3_theme_states.patch,
-    debian/patches/20_gtk3_testgradient.patch:
-    - A collection of patches from upstream git to fix building against
-      gtk3.
+  * New upstream release
+  * debian/control:
+    - Bump build-depends on libgtk3.0-dev
+    - Rename gir1.0 packages to gir1.2
 
- -- Michael Terry <mterry@ubuntu.com>  Thu, 09 Dec 2010 10:55:23 -0500
+ -- Robert Ancell <robert.ancell@canonical.com>  Thu, 23 Dec 2010 10:04:31 +1100
 
 mutter (2.91.3-0ubuntu1) natty; urgency=low
 

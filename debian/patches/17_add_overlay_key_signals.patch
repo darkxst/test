@@ -1,7 +1,8 @@
-diff -rupb mutter-2.31.5//src/core/display.c mutter-2.31.5-keysym-patch//src/core/display.c
---- mutter-2.31.5//src/core/display.c2010-06-10 21:12:15.000000000 +0100
-+++ mutter-2.31.5-keysym-patch//src/core/display.c 2010-08-12 11:46:43.762909996 +0100
-@@ -131,6 +131,9 @@ G_DEFINE_TYPE(MetaDisplay, meta_display,
+Index: mutter-2.91.4/src/core/display.c
+===================================================================
+--- mutter-2.91.4.orig/src/core/display.c	2010-12-23 10:09:54.436944000 +1100
++++ mutter-2.91.4/src/core/display.c	2010-12-23 10:11:05.876944001 +1100
+@@ -131,6 +131,9 @@
  enum
  {
    OVERLAY_KEY,
@@ -11,7 +12,7 @@ diff -rupb mutter-2.31.5//src/core/display.c mutter-2.31.5-keysym-patch//src/cor
    FOCUS_WINDOW,
    WINDOW_CREATED,
    WINDOW_DEMANDS_ATTENTION,
-@@ -234,6 +237,33 @@ meta_display_class_init (MetaDisplayClas
+@@ -234,6 +237,33 @@
                    g_cclosure_marshal_VOID__VOID,
                    G_TYPE_NONE, 0);
  
@@ -45,10 +46,11 @@ diff -rupb mutter-2.31.5//src/core/display.c mutter-2.31.5-keysym-patch//src/cor
    display_signals[WINDOW_CREATED] =
      g_signal_new ("window-created",
                    G_TYPE_FROM_CLASS (klass),
-diff -rupb mutter-2.31.5//src/core/keybindings.c mutter-2.31.5-keysym-patch//src/core/keybindings.c
---- mutter-2.31.5//src/core/keybindings.c2010-04-18 01:44:38.000000000 +0100
-+++ mutter-2.31.5-keysym-patch//src/core/keybindings.c 2010-08-12 12:35:55.142909998 +0100
-@@ -1207,13 +1207,33 @@ process_overlay_key (MetaDisplay *displa
+Index: mutter-2.91.4/src/core/keybindings.c
+===================================================================
+--- mutter-2.91.4.orig/src/core/keybindings.c	2010-12-23 10:09:56.826944001 +1100
++++ mutter-2.91.4/src/core/keybindings.c	2010-12-23 10:11:05.876944001 +1100
+@@ -1241,13 +1241,33 @@
  {
    if (event->xkey.keycode != display->overlay_key_combo.keycode)
      {

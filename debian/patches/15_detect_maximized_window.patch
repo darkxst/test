@@ -1,7 +1,7 @@
-Index: mutter-2.91.2/src/core/window.c
+Index: mutter-2.91.4/src/core/window.c
 ===================================================================
---- mutter-2.91.2.orig/src/core/window.c	2010-11-26 11:33:29.302551001 +1100
-+++ mutter-2.91.2/src/core/window.c	2010-11-26 11:33:30.962551001 +1100
+--- mutter-2.91.4.orig/src/core/window.c	2010-12-23 10:09:52.856944000 +1100
++++ mutter-2.91.4/src/core/window.c	2010-12-23 10:11:04.116944000 +1100
 @@ -1709,6 +1709,36 @@
  }
  
@@ -39,11 +39,11 @@ Index: mutter-2.91.2/src/core/window.c
  meta_window_showing_on_its_workspace (MetaWindow *window)
  {
    gboolean showing;
-Index: mutter-2.91.2/src/include/window.h
+Index: mutter-2.91.4/src/include/window.h
 ===================================================================
---- mutter-2.91.2.orig/src/include/window.h	2010-08-24 06:21:06.000000000 +1000
-+++ mutter-2.91.2/src/include/window.h	2010-11-26 11:33:30.962551001 +1100
-@@ -89,6 +89,13 @@
+--- mutter-2.91.4.orig/src/include/window.h	2010-11-20 06:39:16.000000000 +1100
++++ mutter-2.91.4/src/include/window.h	2010-12-23 10:11:04.116944000 +1100
+@@ -90,6 +90,13 @@
  const char * meta_window_get_description (MetaWindow *window);
  const char * meta_window_get_wm_class (MetaWindow *window);
  const char * meta_window_get_wm_class_instance (MetaWindow *window);

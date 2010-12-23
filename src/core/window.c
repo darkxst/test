@@ -3002,7 +3002,7 @@ ensure_size_hints_satisfied (MetaRectangle    *rect,
 static void
 meta_window_save_rect (MetaWindow *window)
 {
-  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED (window) || window->fullscreen))
+  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED_SIDE_BY_SIDE (window) || window->fullscreen))
     {
       /* save size/pos as appropriate args for move_resize */
       if (!window->maximized_horizontally)
@@ -3044,7 +3044,7 @@ force_save_user_window_placement (MetaWindow *window)
 static void
 save_user_window_placement (MetaWindow *window)
 {
-  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED (window) || window->fullscreen))
+  if (!(META_WINDOW_MAXIMIZED (window) || META_WINDOW_TILED_SIDE_BY_SIDE (window) || window->fullscreen))
     {
       MetaRectangle user_rect;
 
@@ -3217,11 +3217,18 @@ meta_window_is_fullscreen (MetaWindow *window)
 static void
 meta_window_tile (MetaWindow *window)
 {
+  MetaMaximizeFlags directions;
+
   /* Don't do anything if no tiling is requested */
   if (window->tile_mode == META_TILE_NONE)
     return;
 
-  meta_window_maximize_internal (window, META_MAXIMIZE_VERTICAL, NULL);
+  if (window->tile_mode == META_TILE_MAXIMIZED)
+    directions = META_MAXIMIZE_VERTICAL | META_MAXIMIZE_HORIZONTAL;
+  else
+    directions = META_MAXIMIZE_VERTICAL;
+
+  meta_window_maximize_internal (window, directions, NULL);
   meta_screen_tile_preview_update (window->screen, FALSE);
 
   if (window->display->compositor)
@@ -3248,7 +3255,7 @@ meta_window_tile (MetaWindow *window)
 }
 
 static gboolean
-meta_window_can_tile (MetaWindow *window)
+meta_window_can_tile_side_by_side (MetaWindow *window)
 {
   const MetaMonitorInfo *monitor;
   MetaRectangle tile_area;
@@ -3277,6 +3284,18 @@ meta_window_can_tile (MetaWindow *window)
 
   return tile_area.width >= window->size_hints.min_width &&
          tile_area.height >= window->size_hints.min_height;
+}
+
+static gboolean
+meta_window_can_tile_maximized (MetaWindow *window)
+{
+  if (!META_WINDOW_ALLOWS_RESIZE (window))
+    return FALSE;
+
+  if (!window->has_maximize_func)
+    return FALSE;
+
+  return TRUE;
 }
 
 static void
@@ -3345,6 +3364,13 @@ meta_window_unmaximize_internal (MetaWindow        *window,
         window->maximized_horizontally && !unmaximize_horizontally;
       window->maximized_vertically =
         window->maximized_vertically   && !unmaximize_vertically;
+
+      /* Reset the tile mode for maximized tiled windows for consistency
+       * with "normal" maximized windows, but keep other tile modes,
+       * as side-by-side tiled windows may snap back.
+       */
+      if (window->tile_mode == META_TILE_MAXIMIZED)
+        window->tile_mode = META_TILE_NONE;
 
       /* Unmaximize to the saved_rect position in the direction(s)
        * being unmaximized.
@@ -3429,7 +3455,8 @@ meta_window_unmaximize (MetaWindow        *window,
                         MetaMaximizeFlags  directions)
 {
   /* Restore tiling if necessary */
-  if (window->tile_mode != META_TILE_NONE)
+  if (window->tile_mode == META_TILE_LEFT ||
+      window->tile_mode == META_TILE_RIGHT)
     {
       window->maximized_horizontally = FALSE;
       meta_window_tile (window);
@@ -4721,6 +4748,13 @@ meta_window_get_geometry (MetaWindow  *window,
     window->size_hints.height_inc;
 }
 
+/**
+ * meta_window_get_outer_rect:
+ * @window: a #MetaWindow
+ * @rect: (out): pointer to an allocated #MetaRectangle
+ *
+ * Gets the rectangle that bounds @window and, if decorated, its decorations.
+ */
 void
 meta_window_get_outer_rect (const MetaWindow *window,
                             MetaRectangle    *rect)
@@ -7822,14 +7856,13 @@ update_move (MetaWindow  *window,
   shake_threshold = meta_ui_get_drag_threshold (window->screen->ui) *
     DRAG_THRESHOLD_TO_SHAKE_THRESHOLD_FACTOR;
 
-  if (meta_prefs_get_side_by_side_tiling () &&
-      meta_window_can_tile (window))
+  if (meta_prefs_get_edge_tiling ())
     {
       const MetaMonitorInfo *monitor;
       MetaRectangle work_area;
 
-      /* For tiling we are interested in the work area of the monitor where
-       * the pointer is located.
+      /* For side-by-side tiling we are interested in the inside vertical
+       * edges of the work area of the monitor where the pointer is located.
        * Also see comment in meta_window_get_current_tile_area()
        */
       monitor = meta_screen_get_current_monitor (window->screen);
@@ -7837,17 +7870,38 @@ update_move (MetaWindow  *window,
                                              monitor->number,
                                              &work_area);
 
-      if (y >= monitor->rect.y &&
-          y < (monitor->rect.y + monitor->rect.height))
+      if (meta_window_can_tile_side_by_side (window))
         {
-          /* check if cursor is near an edge of the work area */
-          if (x >= monitor->rect.x && x < (work_area.x + shake_threshold))
-            window->tile_mode = META_TILE_LEFT;
-          else if (x >= work_area.x + work_area.width - shake_threshold &&
-                   x < (monitor->rect.x + monitor->rect.width))
-            window->tile_mode = META_TILE_RIGHT;
-          else
-            window->tile_mode = META_TILE_NONE;
+          if (y >= monitor->rect.y &&
+              y < (monitor->rect.y + monitor->rect.height))
+            {
+              /* check if cursor is near an edge of the work area */
+              if (x >= monitor->rect.x && x < (work_area.x + shake_threshold))
+                window->tile_mode = META_TILE_LEFT;
+              else if (x >= work_area.x + work_area.width - shake_threshold &&
+                       x < (monitor->rect.x + monitor->rect.width))
+                window->tile_mode = META_TILE_RIGHT;
+              else
+                window->tile_mode = META_TILE_NONE;
+            }
+        }
+
+      /* For maximized tiling we are interested in the outside top edge
+       * of the work area of the monitor where the pointer is located.
+       *
+       * We use the outside edge instead of the inside edge, because we
+       * don't want to force users to maximize windows they are placing
+       * near the top of their screens.
+       */
+      if (meta_window_can_tile_maximized (window))
+        {
+          if (x >= monitor->rect.x &&
+              x < (monitor->rect.x + monitor->rect.width))
+            {
+              /* check if cursor is on the top edge of the monitor*/
+              if (y >= monitor->rect.y && y <= work_area.y)
+                  window->tile_mode = META_TILE_MAXIMIZED;
+            }
         }
     }
 
@@ -7857,12 +7911,15 @@ update_move (MetaWindow  *window,
    */
 
   if ((META_WINDOW_MAXIMIZED (window) && ABS (dy) >= shake_threshold) ||
-      (META_WINDOW_TILED (window) && (MAX (ABS (dx), ABS (dy)) >= shake_threshold)))
+      (META_WINDOW_TILED_SIDE_BY_SIDE (window) && (MAX (ABS (dx), ABS (dy)) >= shake_threshold)))
     {
       double prop;
 
-      /* Shake loose */
-      window->shaken_loose = !META_WINDOW_TILED (window);
+      /* Shake loose, so that the window snaps back to maximized
+       * when dragged near the top; do not snap back if tiling
+       * is enabled, as top edge tiling can be used in that case
+       */
+      window->shaken_loose = !meta_prefs_get_edge_tiling ();
       window->tile_mode = META_TILE_NONE;
 
       /* move the unmaximized window to the cursor */
@@ -7895,12 +7952,13 @@ update_move (MetaWindow  *window,
    * loose or it is still maximized (then move straight)
    */
   else if ((window->shaken_loose || META_WINDOW_MAXIMIZED (window)) &&
-           window->tile_mode == META_TILE_NONE)
+           window->tile_mode != META_TILE_LEFT && window->tile_mode != META_TILE_RIGHT)
     {
       const MetaMonitorInfo *wmonitor;
       MetaRectangle work_area;
       int monitor;
 
+      window->tile_mode = META_TILE_NONE;
       wmonitor = meta_screen_get_monitor_for_window (window->screen, window);
 
       for (monitor = 0; monitor < window->screen->n_monitor_infos; monitor++)
@@ -7959,7 +8017,7 @@ update_move (MetaWindow  *window,
   meta_window_get_client_root_coords (window, &old);
 
   /* Don't allow movement in the maximized directions or while tiled */
-  if (window->maximized_horizontally || META_WINDOW_TILED (window))
+  if (window->maximized_horizontally || META_WINDOW_TILED_SIDE_BY_SIDE (window))
     new_x = old.x;
   if (window->maximized_vertically)
     new_y = old.y;
@@ -8395,6 +8453,23 @@ check_use_this_motion_notify (MetaWindow *window,
     }
 }
 
+static void
+update_tile_mode (MetaWindow *window)
+{
+  switch (window->tile_mode)
+    {
+      case META_TILE_LEFT:
+      case META_TILE_RIGHT:
+          if (!META_WINDOW_TILED_SIDE_BY_SIDE (window))
+              window->tile_mode = META_TILE_NONE;
+          break;
+      case META_TILE_MAXIMIZED:
+          if (!META_WINDOW_MAXIMIZED (window))
+              window->tile_mode = META_TILE_NONE;
+          break;
+    }
+}
+
 void
 meta_window_handle_mouse_grab_op_event (MetaWindow *window,
                                         XEvent     *event)
@@ -8487,9 +8562,7 @@ meta_window_handle_mouse_grab_op_event (MetaWindow *window,
                * would break the ability to snap back to the tiled
                * state, so we wait until mouse release.
                */
-              if (!window->maximized_vertically &&
-                  window->tile_mode != META_TILE_NONE)
-                window->tile_mode = META_TILE_NONE;
+              update_tile_mode (window);
             }
         }
 
