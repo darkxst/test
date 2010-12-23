@@ -21,8 +21,8 @@
  * 02111-1307, USA.
  */
 
-#include <meta/meta-plugin.h>
-#include <meta/window.h>
+#include "meta-plugin.h"
+#include "window.h"
 
 #include <libintl.h>
 #define _(x) dgettext (GETTEXT_PACKAGE, x)
@@ -319,10 +319,12 @@ switch_workspace (MetaPlugin *plugin,
 {
   MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
   GList        *l;
+  gint          n_workspaces;
   ClutterActor *workspace0  = clutter_group_new ();
   ClutterActor *workspace1  = clutter_group_new ();
   ClutterActor *stage;
   int           screen_width, screen_height;
+  MetaScreen   *screen = meta_plugin_get_screen (plugin);
   ClutterAnimation *animation;
 
   stage = meta_plugin_get_stage (plugin);
@@ -347,6 +349,8 @@ switch_workspace (MetaPlugin *plugin,
       meta_plugin_switch_workspace_completed (plugin);
       return;
     }
+
+  n_workspaces = meta_screen_get_n_workspaces (screen);
 
   l = g_list_last (meta_plugin_get_window_actors (plugin));
 

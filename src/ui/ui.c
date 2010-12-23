@@ -23,10 +23,10 @@
  */
 
 #include <config.h>
-#include <meta/prefs.h>
+#include "prefs.h"
 #include "ui.h"
 #include "frames.h"
-#include <meta/util.h>
+#include "util.h"
 #include "menu.h"
 #include "core.h"
 #include "theme-private.h"
@@ -58,7 +58,7 @@ struct _MetaUI
 };
 
 void
-meta_ui_init (void)
+meta_ui_init (int *argc, char ***argv)
 {
   /* As of 2.91.7, Gdk uses XI2 by default, which conflicts with the
    * direct X calls we use - in particular, events caused by calls to
@@ -70,7 +70,7 @@ meta_ui_init (void)
   gdk_disable_multidevice ();
 #endif
 
-  if (!gtk_init_check (NULL, NULL))
+  if (!gtk_init_check (argc, argv))
     meta_fatal ("Unable to open X display %s\n", XDisplayName (NULL));
 
   meta_stock_icons_init ();
@@ -684,7 +684,7 @@ meta_text_property_to_utf8 (Display             *xdisplay,
 
   display = gdk_x11_lookup_xdisplay (xdisplay);
   count = gdk_text_property_to_utf8_list_for_display (display,
-                                                      gdk_x11_xatom_to_atom_for_display (display, prop->encoding),
+                                                      gdk_x11_xatom_to_atom (prop->encoding),
                                                       prop->format,
                                                       prop->value,
                                                       prop->nitems,
@@ -713,9 +713,9 @@ meta_ui_theme_get_frame_borders (MetaUI *ui,
                                  int               *right_width)
 {
   int text_height;
-  GtkStyleContext *style = NULL;
   PangoContext *context;
   const PangoFontDescription *font_desc;
+  GtkStyle *default_style;
 
   if (meta_ui_have_a_theme ())
     {
@@ -724,8 +724,8 @@ meta_ui_theme_get_frame_borders (MetaUI *ui,
 
       if (!font_desc)
         {
-          style = gtk_style_context_new ();
-          font_desc = gtk_style_context_get_font (style, 0);
+          default_style = gtk_widget_get_default_style ();
+          font_desc = default_style->font_desc;
         }
 
       text_height = meta_pango_font_desc_get_text_height (font_desc, context);
@@ -739,9 +739,6 @@ meta_ui_theme_get_frame_borders (MetaUI *ui,
     {
       *top_height = *bottom_height = *left_width = *right_width = 0;
     }
-
-  if (style != NULL)
-    g_object_unref (style);
 }
 
 void
@@ -764,50 +761,14 @@ meta_ui_accelerator_parse (const char      *accel,
                            guint           *keycode,
                            GdkModifierType *keymask)
 {
-  const char *above_tab;
-
   if (accel[0] == '0' && accel[1] == 'x')
     {
       *keysym = 0;
       *keycode = (guint) strtoul (accel, NULL, 16);
       *keymask = 0;
-
-      return;
     }
-
-  /* The key name 'Above_Tab' is special - it's not an actual keysym name,
-   * but rather refers to the key above the tab key. In order to use
-   * the GDK parsing for modifiers in combination with it, we substitute
-   * it with 'Tab' temporarily before calling gtk_accelerator_parse().
-   */
-#define is_word_character(c) (g_ascii_isalnum(c) || ((c) == '_'))
-#define ABOVE_TAB "Above_Tab"
-#define ABOVE_TAB_LEN 9
-
-  above_tab = strstr (accel, ABOVE_TAB);
-  if (above_tab &&
-      (above_tab == accel || !is_word_character (above_tab[-1])) &&
-      !is_word_character (above_tab[ABOVE_TAB_LEN]))
-    {
-      char *before = g_strndup (accel, above_tab - accel);
-      char *after = g_strdup (above_tab + ABOVE_TAB_LEN);
-      char *replaced = g_strconcat (before, "Tab", after, NULL);
-
-      gtk_accelerator_parse (replaced, NULL, keymask);
-
-      g_free (before);
-      g_free (after);
-      g_free (replaced);
-
-      *keysym = META_KEY_ABOVE_TAB;
-      return;
-    }
-
-#undef is_word_character
-#undef ABOVE_TAB
-#undef ABOVE_TAB_LEN
-
-  gtk_accelerator_parse (accel, keysym, keymask);
+  else
+    gtk_accelerator_parse (accel, keysym, keymask);
 }
 
 gboolean

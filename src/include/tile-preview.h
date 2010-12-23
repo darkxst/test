@@ -23,7 +23,7 @@
 #ifndef META_TILE_PREVIEW_H
 #define META_TILE_PREVIEW_H
 
-#include <meta/boxes.h>
+#include "boxes.h"
 
 typedef struct _MetaTilePreview MetaTilePreview;
 

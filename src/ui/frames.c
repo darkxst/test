@@ -25,14 +25,14 @@
 
 #include <config.h>
 #include <math.h>
-#include <meta/boxes.h>
+#include "boxes.h"
 #include "frames.h"
-#include <meta/util.h>
+#include "util.h"
 #include "core.h"
 #include "menu.h"
 #include "fixedtip.h"
-#include <meta/theme.h>
-#include <meta/prefs.h>
+#include "theme.h"
+#include "prefs.h"
 #include "ui.h"
 
 #include <cairo-xlib.h>
@@ -43,11 +43,12 @@
 
 #define DEFAULT_INNER_BUTTON_BORDER 3
 
-static void meta_frames_destroy       (GtkWidget       *object);
-static void meta_frames_finalize      (GObject         *object);
-static void meta_frames_style_updated (GtkWidget       *widget);
-static void meta_frames_map           (GtkWidget       *widget);
-static void meta_frames_unmap         (GtkWidget       *widget);
+static void meta_frames_destroy    (GtkWidget       *object);
+static void meta_frames_finalize   (GObject         *object);
+static void meta_frames_style_set  (GtkWidget       *widget,
+                                    GtkStyle        *prev_style);
+static void meta_frames_map        (GtkWidget       *widget);
+static void meta_frames_unmap      (GtkWidget       *widget);
 
 static void meta_frames_update_prelit_control (MetaFrames      *frames,
                                                MetaUIFrame     *frame,
@@ -136,7 +137,7 @@ meta_frames_class_init (MetaFramesClass *class)
 
   widget_class->destroy = meta_frames_destroy;
 
-  widget_class->style_updated = meta_frames_style_updated;
+  widget_class->style_set = meta_frames_style_set;
 
   widget_class->map = meta_frames_map;
   widget_class->unmap = meta_frames_unmap;
@@ -421,7 +422,8 @@ reattach_style_func (gpointer key, gpointer value, gpointer data)
 }
 
 static void
-meta_frames_style_updated  (GtkWidget *widget)
+meta_frames_style_set  (GtkWidget *widget,
+                        GtkStyle  *prev_style)
 {
   MetaFrames *frames;
 
@@ -432,7 +434,7 @@ meta_frames_style_updated  (GtkWidget *widget)
   g_hash_table_foreach (frames->frames,
                         reattach_style_func, frames);
 
-  GTK_WIDGET_CLASS (meta_frames_parent_class)->style_updated (widget);
+  GTK_WIDGET_CLASS (meta_frames_parent_class)->style_set (widget, prev_style);
 }
 
 static void
@@ -575,9 +577,12 @@ meta_frames_attach_style (MetaFrames  *frames,
                           MetaUIFrame *frame)
 {
   if (frame->style != NULL)
-    g_object_unref (frame->style);
+    gtk_style_detach (frame->style);
 
-  frame->style = g_object_ref (gtk_widget_get_style_context (GTK_WIDGET (frames)));
+  /* Weirdly, gtk_style_attach() steals a reference count from the style passed in */
+  g_object_ref (gtk_widget_get_style (GTK_WIDGET (frames)));
+  frame->style = gtk_style_attach (gtk_widget_get_style (GTK_WIDGET (frames)),
+                                   frame->window);
 }
 
 void
@@ -648,7 +653,7 @@ meta_frames_unmanage_window (MetaFrames *frames,
       
       g_hash_table_remove (frames->frames, &frame->xwindow);
 
-      g_object_unref (frame->style);
+      gtk_style_detach (frame->style);
 
       gdk_window_destroy (frame->window);
 
@@ -2393,6 +2398,20 @@ meta_frames_paint (MetaFrames   *frames,
     default:
       break;
     }
+
+  /* Map button function states to button position states */
+  button_states[META_BUTTON_TYPE_LEFT_LEFT_BACKGROUND] =
+    button_states[META_BUTTON_TYPE_MENU];
+  button_states[META_BUTTON_TYPE_LEFT_MIDDLE_BACKGROUND] =
+    META_BUTTON_STATE_NORMAL;
+  button_states[META_BUTTON_TYPE_LEFT_RIGHT_BACKGROUND] =
+    META_BUTTON_STATE_NORMAL;
+  button_states[META_BUTTON_TYPE_RIGHT_LEFT_BACKGROUND] =
+    button_states[META_BUTTON_TYPE_MINIMIZE];
+  button_states[META_BUTTON_TYPE_RIGHT_MIDDLE_BACKGROUND] =
+    button_states[META_BUTTON_TYPE_MAXIMIZE];
+  button_states[META_BUTTON_TYPE_RIGHT_RIGHT_BACKGROUND] =
+    button_states[META_BUTTON_TYPE_CLOSE];
   
   meta_core_get (display, frame->xwindow,
                  META_CORE_GET_FRAME_FLAGS, &flags,
@@ -2464,7 +2483,8 @@ meta_frames_set_window_background (MetaFrames   *frames,
     }
   else
     {
-      gtk_style_context_set_background (frame->style, frame->window);
+      gtk_style_set_background (frame->style,
+                                frame->window, GTK_STATE_NORMAL);
     }
  }
 

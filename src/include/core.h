@@ -27,7 +27,7 @@
 
 /* Don't include core headers here */
 #include <gdk/gdkx.h>
-#include <meta/common.h>
+#include "common.h"
 
 typedef enum
 {

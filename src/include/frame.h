@@ -1,10 +1,8 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
 
-/* MetaGroup property handling */
-
-/* 
- * Copyright (C) 2002 Red Hat, Inc.
- * 
+/*
+ * Copyright (C) 2008 Iain Holmes
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of the
@@ -14,25 +12,20 @@
  * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
  * 02111-1307, USA.
  */
 
-#ifndef META_GROUP_PROPS_H
-#define META_GROUP_PROPS_H
+#ifndef META_FRAME_H
+#define META_FRAME_H
 
-#include "group.h"
-#include "window-private.h"
+#include <X11/Xlib.h>
 
-void meta_group_reload_property         (MetaGroup   *group,
-                                         Atom         property);
-void meta_group_reload_properties       (MetaGroup   *group,
-                                         const Atom  *properties,
-                                         int          n_properties);
-void meta_display_init_group_prop_hooks (MetaDisplay *display);
-void meta_display_free_group_prop_hooks (MetaDisplay *display);
+#include "types.h"
 
-#endif /* META_GROUP_PROPS_H */
+Window meta_frame_get_xwindow (MetaFrame *frame);
+
+#endif

@@ -24,6 +24,7 @@
 #ifndef META_FRAME_PRIVATE_H
 #define META_FRAME_PRIVATE_H
 
+#include "frame.h"
 #include "window-private.h"
 
 typedef struct _MetaFrameGeometry MetaFrameGeometry;
@@ -67,8 +68,7 @@ void     meta_window_ensure_frame           (MetaWindow *window);
 void     meta_window_destroy_frame          (MetaWindow *window);
 void     meta_frame_queue_draw              (MetaFrame  *frame);
 
-MetaFrameFlags meta_frame_get_flags   (MetaFrame *frame);
-Window         meta_frame_get_xwindow (MetaFrame *frame);
+MetaFrameFlags meta_frame_get_flags (MetaFrame *frame);
 
 /* These should ONLY be called from meta_window_move_resize_internal */
 void meta_frame_calc_geometry      (MetaFrame         *frame,

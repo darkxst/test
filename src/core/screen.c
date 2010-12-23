@@ -28,16 +28,16 @@
 
 #include <config.h>
 #include "screen-private.h"
-#include <meta/util.h>
-#include <meta/errors.h>
+#include "util.h"
+#include "errors.h"
 #include "window-private.h"
-#include "frame.h"
-#include <meta/prefs.h>
+#include "frame-private.h"
+#include "prefs.h"
 #include "workspace-private.h"
 #include "keybindings-private.h"
 #include "stack.h"
 #include "xprops.h"
-#include <meta/compositor.h>
+#include "compositor.h"
 #include "mutter-marshal.h"
 #include "mutter-enum-types.h"
 
@@ -277,7 +277,7 @@ set_supported_hint (MetaScreen *screen)
   Atom atoms[] = {
 #define EWMH_ATOMS_ONLY
 #define item(x)  screen->display->atom_##x,
-#include <meta/atomnames.h>
+#include "atomnames.h"
 #undef item
 #undef EWMH_ATOMS_ONLY
   };
@@ -951,10 +951,11 @@ meta_screen_manage_all_windows (MetaScreen *screen)
   for (list = windows; list != NULL; list = list->next)
     {
       WindowInfo *info = list->data;
+      MetaWindow *window;
 
-      meta_window_new_with_attrs (screen->display, info->xwindow, TRUE,
-                                  META_COMP_EFFECT_NONE,
-                                  &info->attrs);
+      window = meta_window_new_with_attrs (screen->display, info->xwindow, TRUE,
+                                           META_COMP_EFFECT_NONE,
+                                           &info->attrs);
     }
   meta_stack_thaw (screen->stack);
 
@@ -977,15 +978,7 @@ meta_screen_composite_all_windows (MetaScreen *screen)
   windows = meta_display_list_windows (display,
                                        META_LIST_INCLUDE_OVERRIDE_REDIRECT);
   for (tmp = windows; tmp != NULL; tmp = tmp->next)
-    {
-      MetaWindow *window = tmp->data;
-
-      meta_compositor_add_window (display->compositor, window);
-      if (window->visible_to_compositor)
-        meta_compositor_show_window (display->compositor, window,
-                                     META_COMP_EFFECT_NONE);
-    }
-
+    meta_compositor_add_window (display->compositor, tmp->data);
   g_slist_free (windows);
   
   /* initialize the compositor's view of the stacking order */
@@ -1283,7 +1276,6 @@ meta_screen_remove_workspace (MetaScreen *screen, MetaWorkspace *workspace,
   MetaWorkspace *neighbour = NULL;
   GList         *next = NULL;
   int            index;
-  gboolean       active_index_changed;
   int            new_num;
 
   l = screen->workspaces;
@@ -1322,7 +1314,6 @@ meta_screen_remove_workspace (MetaScreen *screen, MetaWorkspace *workspace,
 
   /* To emit the signal after removing the workspace */
   index = meta_workspace_index (workspace);
-  active_index_changed = index < meta_screen_get_active_workspace_index (screen);
 
   /* This also removes the workspace from the screens list */
   meta_workspace_remove (workspace);
@@ -1331,11 +1322,6 @@ meta_screen_remove_workspace (MetaScreen *screen, MetaWorkspace *workspace,
 
   set_number_of_spaces_hint (screen, new_num);
   meta_prefs_set_num_workspaces (new_num);
-
-  /* If deleting a workspace before the current workspace, the active
-   * workspace index changes, so we need to update that hint */
-  if (active_index_changed)
-      meta_screen_set_active_workspace_hint (workspace->screen);
 
   l = next;
   while (l)
@@ -1849,16 +1835,6 @@ meta_screen_tile_preview_update (MetaScreen *screen,
     }
 }
 
-void
-meta_screen_tile_preview_hide (MetaScreen *screen)
-{
-  if (screen->tile_preview_timeout_id > 0)
-    g_source_remove (screen->tile_preview_timeout_id);
-
-  if (screen->tile_preview)
-    meta_tile_preview_hide (screen->tile_preview);
-}
-
 MetaWindow*
 meta_screen_get_mouse_window (MetaScreen  *screen,
                               MetaWindow  *not_this_one)
@@ -2163,9 +2139,6 @@ meta_screen_update_workspace_layout (MetaScreen *screen)
 {
   gulong *list;
   int n_items;
-
-  if (screen->workspace_layout_overridden)
-    return;
   
   list = NULL;
   n_items = 0;
@@ -2250,43 +2223,6 @@ meta_screen_update_workspace_layout (MetaScreen *screen)
                 screen->columns_of_workspaces,
                 screen->vertical_workspaces,
                 screen->starting_corner);
-}
-
-/**
- * meta_screen_override_workspace_layout:
- * @screen: a #MetaScreen
- * @starting_corner: the corner at which the first workspace is found
- * @vertical_layout: if %TRUE the workspaces are laid out in columns rather than rows
- * @n_rows: number of rows of workspaces, or -1 to determine the number of rows from
- *   @n_columns and the total number of workspaces
- * @n_columns: number of columns of workspaces, or -1 to determine the number of columns from
- *   @n_rows and the total number of workspaces
- *
- * Explicitly set the layout of workspaces. Once this has been called, the contents of the
- * _NET_DESKTOP_LAYOUT property on the root window are completely ignored.
- */
-void
-meta_screen_override_workspace_layout (MetaScreen      *screen,
-                                       MetaScreenCorner starting_corner,
-                                       gboolean         vertical_layout,
-                                       int              n_rows,
-                                       int              n_columns)
-{
-  g_return_if_fail (META_IS_SCREEN (screen));
-  g_return_if_fail (n_rows > 0 || n_columns > 0);
-  g_return_if_fail (n_rows != 0 && n_columns != 0);
-
-  screen->workspace_layout_overridden = TRUE;
-  screen->vertical_workspaces = vertical_layout != FALSE;
-  screen->starting_corner = starting_corner;
-  screen->rows_of_workspaces = n_rows;
-  screen->columns_of_workspaces = n_columns;
-
-  /* In theory we should remove _NET_DESKTOP_LAYOUT from _NET_SUPPORTED at this
-   * point, but it's unlikely that anybody checks that, and it's unlikely that
-   * anybody who checks that handles changes, so we'd probably just create
-   * a race condition. And it's hard to implement with the code in set_supported_hint()
-   */
 }
 
 static void
@@ -3390,31 +3326,5 @@ meta_screen_workspace_switched (MetaScreen         *screen,
 {
   g_signal_emit (screen, screen_signals[WORKSPACE_SWITCHED], 0,
                  from, to, direction);
-}
-
-void
-meta_screen_set_active_workspace_hint (MetaScreen *screen)
-{
-  unsigned long data[1];
-
-  /* this is because we destroy the spaces in order,
-   * so we always end up setting a current desktop of
-   * 0 when closing a screen, so lose the current desktop
-   * on restart. By doing this we keep the current
-   * desktop on restart.
-   */
-  if (screen->closing > 0)
-    return;
-  
-  data[0] = meta_workspace_index (screen->active_workspace);
-
-  meta_verbose ("Setting _NET_CURRENT_DESKTOP to %lu\n", data[0]);
-  
-  meta_error_trap_push (screen->display);
-  XChangeProperty (screen->display->xdisplay, screen->xroot,
-                   screen->display->atom__NET_CURRENT_DESKTOP,
-                   XA_CARDINAL,
-                   32, PropModeReplace, (guchar*) data, 1);
-  meta_error_trap_pop (screen->display);
 }
 

@@ -26,7 +26,7 @@
 
 #include <X11/Xlib.h>
 #include <glib.h>
-#include <meta/types.h>
+#include "types.h"
 
 /* note, can return NULL */
 MetaGroup* meta_window_get_group       (MetaWindow *window);

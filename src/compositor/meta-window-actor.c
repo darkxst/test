@@ -1,7 +1,5 @@
 /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
 
-#include <config.h>
-
 #define _ISOC99_SOURCE /* for roundf */
 #include <math.h>
 
@@ -13,25 +11,16 @@
 #include <clutter/x11/clutter-x11.h>
 #include <gdk/gdk.h> /* for gdk_rectangle_union() */
 
-#include <meta/display.h>
-#include <meta/errors.h>
+#include "display.h"
+#include "errors.h"
 #include "frame.h"
-#include <meta/window.h>
+#include "window.h"
 #include "xprops.h"
 
 #include "compositor-private.h"
 #include "meta-shadow-factory-private.h"
 #include "meta-shaped-texture.h"
 #include "meta-window-actor-private.h"
-
-enum {
-  POSITION_CHANGED,
-  SIZE_CHANGED,
-  LAST_SIGNAL
-};
-
-static guint signals[LAST_SIGNAL] = {0};
-
 
 struct _MetaWindowActorPrivate
 {
@@ -284,21 +273,6 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
   g_object_class_install_property (object_class,
                                    PROP_SHADOW_CLASS,
                                    pspec);
-
-  signals[POSITION_CHANGED] =
-    g_signal_new ("position-changed",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL,
-                  g_cclosure_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
-  signals[SIZE_CHANGED] =
-    g_signal_new ("size-changed",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL,
-                  g_cclosure_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -325,6 +299,7 @@ window_decorated_notify (MetaWindow *mw,
   MetaDisplay            *display  = meta_screen_get_display (screen);
   Display                *xdisplay = meta_display_get_xdisplay (display);
   Window                  new_xwindow;
+  MetaCompScreen         *info;
   XWindowAttributes       attrs;
 
   /*
@@ -339,6 +314,8 @@ window_decorated_notify (MetaWindow *mw,
     new_xwindow = meta_window_get_xwindow (mw);
 
   meta_window_actor_detach (self);
+
+  info = meta_screen_get_compositor_data (screen);
 
   /*
    * First of all, clean up any resources we are currently using and will
@@ -383,6 +360,9 @@ meta_window_actor_constructed (GObject *object)
   Window                  xwindow  = priv->xwindow;
   Display                *xdisplay = meta_display_get_xdisplay (display);
   XRenderPictFormat      *format;
+  MetaCompositor         *compositor;
+
+  compositor = meta_display_get_compositor (display);
 
 #ifdef HAVE_SHAPE
   /* Listen for ShapeNotify events on the window */
@@ -901,19 +881,6 @@ meta_window_actor_get_texture (MetaWindowActor *self)
   return self->priv->actor;
 }
 
-/**
- * meta_window_actor_is_destroyed:
- *
- * Gets whether the X window that the actor was displaying has been destroyed
- *
- * Return value: %TRUE when the window is destroyed, otherwise %FALSE
- */
-gboolean
-meta_window_actor_is_destroyed (MetaWindowActor *self)
-{
-  return self->priv->disposed;
-}
-
 gboolean
 meta_window_actor_is_override_redirect (MetaWindowActor *self)
 {
@@ -1340,8 +1307,6 @@ meta_window_actor_sync_actor_position (MetaWindowActor *self)
                               window_rect.x, window_rect.y);
   clutter_actor_set_size (CLUTTER_ACTOR (self),
                           window_rect.width, window_rect.height);
-
-  g_signal_emit (self, signals[POSITION_CHANGED], 0);
 }
 
 void
@@ -1633,8 +1598,6 @@ meta_window_actor_update_bounding_region (MetaWindowActor *self,
    */
   if (!priv->shaped)
     meta_window_actor_invalidate_shadow (self);
-
-  g_signal_emit (self, signals[SIZE_CHANGED], 0);
 }
 
 static void
@@ -1799,6 +1762,7 @@ check_needs_pixmap (MetaWindowActor *self)
   MetaCompScreen      *info     = meta_screen_get_compositor_data (screen);
   MetaCompositor      *compositor;
   Window               xwindow  = priv->xwindow;
+  gboolean             full     = FALSE;
 
   if (!priv->needs_pixmap)
     return;
@@ -1859,11 +1823,9 @@ check_needs_pixmap (MetaWindowActor *self)
        * do it here.
        * See: http://bugzilla.clutter-project.org/show_bug.cgi?id=2236
        */
-#ifdef HAVE_GLX_TEXTURE_PIXMAP
       if (G_UNLIKELY (!clutter_glx_texture_pixmap_using_extension (
                                   CLUTTER_GLX_TEXTURE_PIXMAP (priv->actor))))
         g_warning ("NOTE: Not using GLX TFP!\n");
-#endif
 
       g_object_get (priv->actor,
                     "pixmap-width", &pxm_width,
@@ -1871,6 +1833,8 @@ check_needs_pixmap (MetaWindowActor *self)
                     NULL);
 
       meta_window_actor_update_bounding_region (self, pxm_width, pxm_height);
+
+      full = TRUE;
     }
 
   meta_error_trap_pop (display);

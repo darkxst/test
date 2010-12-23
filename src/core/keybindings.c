@@ -29,13 +29,13 @@
 #include <config.h>
 #include "keybindings-private.h"
 #include "workspace-private.h"
-#include <meta/errors.h>
+#include "errors.h"
 #include "edge-resistance.h"
 #include "ui.h"
-#include "frame.h"
+#include "frame-private.h"
 #include "place.h"
-#include <meta/prefs.h>
-#include <meta/util.h>
+#include "prefs.h"
+#include "util.h"
 
 #include <X11/keysym.h>
 #include <string.h>
@@ -116,10 +116,6 @@ reload_keymap (MetaDisplay *display)
 {
   if (display->keymap)
     meta_XFree (display->keymap);
-
-  /* This is expensive to compute, so we'll lazily load if and when we first
-   * need it */
-  display->above_tab_keycode = 0;
 
   display->keymap = XGetKeyboardMapping (display->xdisplay,
                                          display->min_keycode,
@@ -232,16 +228,6 @@ reload_modmap (MetaDisplay *display)
               display->meta_mask);
 }
 
-static guint
-keysym_to_keycode (MetaDisplay *display,
-                   guint        keysym)
-{
-  if (keysym == META_KEY_ABOVE_TAB)
-    return meta_display_get_above_tab_keycode (display);
-  else
-    return XKeysymToKeycode (display->xdisplay, keysym);
-}
-
 static void
 reload_keycodes (MetaDisplay *display)
 {
@@ -250,8 +236,8 @@ reload_keycodes (MetaDisplay *display)
 
   if (display->overlay_key_combo.keysym != 0)
     {
-      display->overlay_key_combo.keycode =
-        keysym_to_keycode (display, display->overlay_key_combo.keysym);
+      display->overlay_key_combo.keycode = XKeysymToKeycode (
+          display->xdisplay, display->overlay_key_combo.keysym);
     }
   
   if (display->key_bindings)
@@ -263,8 +249,8 @@ reload_keycodes (MetaDisplay *display)
         {
           if (display->key_bindings[i].keysym != 0)
             {
-              display->key_bindings[i].keycode =
-                keysym_to_keycode (display, display->key_bindings[i].keysym);
+              display->key_bindings[i].keycode = XKeysymToKeycode (
+                      display->xdisplay, display->key_bindings[i].keysym);
             }
           
           ++i;
@@ -534,9 +520,6 @@ meta_display_get_keybinding_action (MetaDisplay  *display,
   keysym = XKeycodeToKeysym (display->xdisplay, keycode, 0);
   mask = mask & 0xff & ~display->ignored_modifier_mask;
   binding = display_get_keybinding (display, keysym, keycode, mask);
-
-  if (!binding && keycode == meta_display_get_above_tab_keycode (display))
-    binding = display_get_keybinding (display, META_KEY_ABOVE_TAB, keycode, mask);
 
   if (binding)
     return meta_prefs_get_keybinding_action (binding->name);
@@ -1551,24 +1534,15 @@ process_mouse_move_resize_grab (MetaDisplay *display,
 
   if (keysym == XK_Escape)
     {
-      /* Hide the tiling preview if necessary */
-      if (window->tile_mode != META_TILE_NONE)
-        meta_screen_tile_preview_hide (screen);
-
-      /* Restore the original tile mode */
-      window->tile_mode = display->grab_tile_mode;
-
       /* End move or resize and restore to original state.  If the
        * window was a maximized window that had been "shaken loose" we
        * need to remaximize it.  In normal cases, we need to do a
        * moveresize now to get the position back to the original.
        */
-      if (window->shaken_loose || window->tile_mode == META_TILE_MAXIMIZED)
+      if (window->shaken_loose)
         meta_window_maximize (window,
                               META_MAXIMIZE_HORIZONTAL |
                               META_MAXIMIZE_VERTICAL);
-      else if (window->tile_mode != META_TILE_NONE)
-        meta_window_tile (window);
       else
         meta_window_move_resize (display->grab_window,
                                  TRUE,

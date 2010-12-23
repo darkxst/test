@@ -24,8 +24,8 @@
 
 #include <X11/Xlib.h>
 #include <glib-object.h>
-#include <meta/types.h>
-#include <meta/workspace.h>
+#include "types.h"
+#include "workspace.h"
 
 #define META_TYPE_SCREEN            (meta_screen_get_type ())
 #define META_SCREEN(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_SCREEN, MetaScreen))
@@ -80,17 +80,4 @@ void meta_screen_get_monitor_geometry (MetaScreen    *screen,
                                        int            monitor,
                                        MetaRectangle *geometry);
 
-typedef enum
-{
-  META_SCREEN_TOPLEFT,
-  META_SCREEN_TOPRIGHT,
-  META_SCREEN_BOTTOMLEFT,
-  META_SCREEN_BOTTOMRIGHT
-} MetaScreenCorner;
-
-void meta_screen_override_workspace_layout (MetaScreen      *screen,
-                                            MetaScreenCorner starting_corner,
-                                            gboolean         vertical_layout,
-                                            int              n_rows,
-                                            int              n_columns);
 #endif

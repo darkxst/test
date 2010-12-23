@@ -4,19 +4,19 @@
 
 #include <clutter/x11/clutter-x11.h>
 
-#include <meta/screen.h>
-#include <meta/errors.h>
-#include <meta/window.h>
+#include "screen.h"
+#include "errors.h"
+#include "window.h"
 #include "compositor-private.h"
-#include <meta/compositor-mutter.h>
+#include "compositor-mutter.h"
 #include "xprops.h"
-#include <meta/prefs.h>
-#include <meta/meta-shadow-factory.h>
+#include "prefs.h"
+#include "meta-shadow-factory.h"
 #include "meta-window-actor-private.h"
 #include "meta-window-group.h"
 #include "meta-background-actor.h"
-#include "window-private.h" /* to check window->hidden */
-#include "display-private.h" /* for meta_display_lookup_x_window() */
+#include "../core/window-private.h" /* to check window->hidden */
+#include "../core/display-private.h" /* for meta_display_lookup_x_window() */
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xcomposite.h>
 
@@ -550,7 +550,18 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
 
   info->plugin_mgr =
     meta_plugin_manager_get (screen);
-  meta_plugin_manager_initialize (info->plugin_mgr);
+
+  if (info->plugin_mgr != meta_plugin_manager_get_default ())
+    {
+      /* The default plugin manager has been initialized during
+       * global preferences load.
+       */
+      if (!meta_plugin_manager_load (info->plugin_mgr))
+        g_critical ("failed to load plugins");
+    }
+
+  if (!meta_plugin_manager_initialize (info->plugin_mgr))
+    g_critical ("failed to initialize plugins");
 
   /*
    * Delay the creation of the overlay window as long as we can, to avoid
@@ -963,10 +974,7 @@ meta_compositor_sync_stack (MetaCompositor  *compositor,
 
           if (old_window->hidden &&
               !meta_window_actor_effect_in_progress (old_actor))
-            {
-              old_stack = g_list_delete_link (old_stack, old_stack);
-              old_actor = NULL;
-            }
+            old_stack = g_list_delete_link (old_stack, old_stack);
           else
             break;
         }

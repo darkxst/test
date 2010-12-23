@@ -20,8 +20,8 @@
 #ifndef META_KEYBINDINGS_H
 #define META_KEYBINDINGS_H
 
-#include <meta/display.h>
-#include <meta/common.h>
+#include "display.h"
+#include "common.h"
 
 /**
  * MetaKeyHandlerFunc: (skip)

@@ -28,19 +28,19 @@
 #include "window-private.h"
 #include "boxes-private.h"
 #include "edge-resistance.h"
-#include <meta/util.h>
-#include "frame.h"
-#include <meta/errors.h>
+#include "util.h"
+#include "frame-private.h"
+#include "errors.h"
 #include "workspace-private.h"
 #include "stack.h"
 #include "keybindings-private.h"
 #include "ui.h"
 #include "place.h"
 #include "session.h"
-#include <meta/prefs.h>
+#include "prefs.h"
 #include "resizepopup.h"
 #include "xprops.h"
-#include <meta/group.h>
+#include "group.h"
 #include "window-props.h"
 #include "constraints.h"
 #include "mutter-enum-types.h"
@@ -71,9 +71,6 @@ static void     set_net_wm_state          (MetaWindow     *window);
 static void     send_configure_notify     (MetaWindow     *window);
 static gboolean process_property_notify   (MetaWindow     *window,
                                            XPropertyEvent *event);
-
-static void     meta_window_force_placement (MetaWindow     *window);
-
 static void     meta_window_show          (MetaWindow     *window);
 static void     meta_window_hide          (MetaWindow     *window);
 
@@ -1797,18 +1794,7 @@ implement_showing (MetaWindow *window,
                 showing, window->desc);
 
   if (!showing)
-    {
-      /* When we manage a new window, we normally delay placing it
-       * until it is is first shown, but if we're previewing hidden
-       * windows we might want to know where they are on the screen,
-       * so we should place the window even if we're hiding it rather
-       * than showing it.
-       */
-      if (!window->placed && meta_prefs_get_live_hidden_windows ())
-        meta_window_force_placement (window);
-
-      meta_window_hide (window);
-    }
+    meta_window_hide (window);
   else
     meta_window_show (window);
 
@@ -2492,36 +2478,6 @@ meta_window_toplevel_is_mapped (MetaWindow *window)
 }
 
 static void
-meta_window_force_placement (MetaWindow *window)
-{
-  if (window->placed)
-    return;
-
-  /* We have to recalc the placement here since other windows may
-   * have been mapped/placed since we last did constrain_position
-   */
-
-  /* calc_placement is an efficiency hack to avoid
-   * multiple placement calculations before we finally
-   * show the window.
-   */
-  window->calc_placement = TRUE;
-  meta_window_move_resize_now (window);
-  window->calc_placement = FALSE;
-
-  /* don't ever do the initial position constraint thing again.
-   * This is toggled here so that initially-iconified windows
-   * still get placed when they are ultimately shown.
-   */
-  window->placed = TRUE;
-
-  /* Don't want to accidentally reuse the fact that we had been denied
-   * focus in any future constraints unless we're denied focus again.
-   */
-  window->denied_focus_and_not_transient = FALSE;
-}
-
-static void
 meta_window_show (MetaWindow *window)
 {
   gboolean did_show;
@@ -2594,7 +2550,30 @@ meta_window_show (MetaWindow *window)
     }
 
   if (!window->placed)
-    meta_window_force_placement (window);
+    {
+      /* We have to recalc the placement here since other windows may
+       * have been mapped/placed since we last did constrain_position
+       */
+
+      /* calc_placement is an efficiency hack to avoid
+       * multiple placement calculations before we finally
+       * show the window.
+       */
+      window->calc_placement = TRUE;
+      meta_window_move_resize_now (window);
+      window->calc_placement = FALSE;
+
+      /* don't ever do the initial position constraint thing again.
+       * This is toggled here so that initially-iconified windows
+       * still get placed when they are ultimately shown.
+       */
+      window->placed = TRUE;
+
+      /* Don't want to accidentally reuse the fact that we had been denied
+       * focus in any future constraints unless we're denied focus again.
+       */
+      window->denied_focus_and_not_transient = FALSE;
+    }
 
   if (needs_stacking_adjustment)
     {
@@ -2699,8 +2678,6 @@ meta_window_show (MetaWindow *window)
 
   if (!window->visible_to_compositor)
     {
-      window->visible_to_compositor = TRUE;
-
       if (window->display->compositor)
         {
           MetaCompEffect effect = META_COMP_EFFECT_NONE;
@@ -2720,6 +2697,8 @@ meta_window_show (MetaWindow *window)
           meta_compositor_show_window (window->display->compositor,
                                        window, effect);
         }
+
+      window->visible_to_compositor = TRUE;
     }
 
   /* We don't want to worry about all cases from inside
@@ -2790,8 +2769,6 @@ meta_window_hide (MetaWindow *window)
 
   if (window->visible_to_compositor)
     {
-      window->visible_to_compositor = FALSE;
-
       if (window->display->compositor)
         {
           MetaCompEffect effect = META_COMP_EFFECT_NONE;
@@ -2811,6 +2788,8 @@ meta_window_hide (MetaWindow *window)
           meta_compositor_hide_window (window->display->compositor,
                                        window, effect);
         }
+
+      window->visible_to_compositor = FALSE;
     }
 
   did_hide = FALSE;
@@ -3205,7 +3184,7 @@ meta_window_is_fullscreen (MetaWindow *window)
   return window->fullscreen;
 }
 
-void
+static void
 meta_window_tile (MetaWindow *window)
 {
   MetaMaximizeFlags directions;
@@ -5991,12 +5970,12 @@ meta_window_client_message (MetaWindow *window,
   else if (event->xclient.message_type ==
            display->atom__NET_MOVERESIZE_WINDOW)
     {
-      int gravity;
+      int gravity, source;
       guint value_mask;
 
       gravity = (event->xclient.data.l[0] & 0xff);
       value_mask = (event->xclient.data.l[0] & 0xf00) >> 8;
-      /* source = (event->xclient.data.l[0] & 0xf000) >> 12; */
+      source = (event->xclient.data.l[0] & 0xf000) >> 12;
 
       if (gravity == 0)
         gravity = window->size_hints.win_gravity;
@@ -6039,6 +6018,7 @@ meta_window_client_message (MetaWindow *window,
   else if (event->xclient.message_type ==
            display->atom__NET_WM_FULLSCREEN_MONITORS)
     {
+      MetaClientType source_indication;
       gulong top, bottom, left, right;
 
       meta_verbose ("_NET_WM_FULLSCREEN_MONITORS request for window '%s'\n",
@@ -6048,7 +6028,7 @@ meta_window_client_message (MetaWindow *window,
       bottom = event->xclient.data.l[1];
       left = event->xclient.data.l[2];
       right = event->xclient.data.l[3];
-      /* source_indication = event->xclient.data.l[4]; */
+      source_indication = event->xclient.data.l[4];
 
       meta_window_update_fullscreen_monitors (window, top, bottom, left, right);
     }
@@ -7658,6 +7638,7 @@ meta_window_titlebar_is_onscreen (MetaWindow *window)
 {
   MetaRectangle  titlebar_rect;
   GList         *onscreen_region;
+  int            titlebar_size;
   gboolean       is_onscreen;
 
   const int min_height_needed  = 8;
@@ -7671,6 +7652,7 @@ meta_window_titlebar_is_onscreen (MetaWindow *window)
   /* Get the rectangle corresponding to the titlebar */
   meta_window_get_outer_rect (window, &titlebar_rect);
   titlebar_rect.height = window->frame->child_y;
+  titlebar_size = meta_rectangle_area (&titlebar_rect);
 
   /* Run through the spanning rectangles for the screen and see if one of
    * them overlaps with the titlebar sufficiently to consider it onscreen.
@@ -9459,14 +9441,6 @@ meta_window_is_skip_taskbar (MetaWindow *window)
   return window->skip_taskbar;
 }
 
-/**
- * meta_window_get_rect:
- * @window: a #MetaWindow
- *
- * Gets the rectangle that bounds @window, ignoring any window decorations.
- *
- * Return value: (transfer none): the #MetaRectangle for the window
- */
 MetaRectangle *
 meta_window_get_rect (MetaWindow *window)
 {

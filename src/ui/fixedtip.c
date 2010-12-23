@@ -55,11 +55,13 @@ draw_handler (GtkWidget *tooltips,
               cairo_t   *cr,
               gpointer   user_data)
 {
-  gtk_render_background (gtk_widget_get_style_context (tooltips),
-                         cr,
-                         0, 0,
-                         gtk_widget_get_allocated_width (tooltips),
-                         gtk_widget_get_allocated_height (tooltips));
+  gtk_paint_flat_box (gtk_widget_get_style (tip),
+                      cr,
+                      GTK_STATE_NORMAL, GTK_SHADOW_OUT, 
+                      tip, "tooltip",
+                      0, 0,
+                      gtk_widget_get_allocated_width (tip),
+                      gtk_widget_get_allocated_height (tip));
 
   return FALSE;
 }

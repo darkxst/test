@@ -28,7 +28,7 @@
 #include <clutter/clutter.h>
 #include <X11/Xlib.h>
 
-#include <meta/compositor.h>
+#include "compositor.h"
 
 /*
  * MetaWindowActor object (ClutterGroup sub-class)
@@ -65,6 +65,5 @@ ClutterActor *     meta_window_actor_get_texture          (MetaWindowActor *self
 gboolean           meta_window_actor_is_override_redirect (MetaWindowActor *self);
 const char *       meta_window_actor_get_description      (MetaWindowActor *self);
 gboolean       meta_window_actor_showing_on_its_workspace (MetaWindowActor *self);
-gboolean       meta_window_actor_is_destroyed (MetaWindowActor *self);
 
 #endif /* META_WINDOW_ACTOR_H */

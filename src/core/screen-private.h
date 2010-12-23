@@ -34,7 +34,7 @@
 #define META_SCREEN_PRIVATE_H
 
 #include "display-private.h"
-#include <meta/screen.h>
+#include "screen.h"
 #include <X11/Xutil.h>
 #include "stack-tracker.h"
 #include "ui.h"
@@ -49,6 +49,14 @@ struct _MetaMonitorInfo
 
 typedef void (* MetaScreenWindowFunc) (MetaScreen *screen, MetaWindow *window,
                                        gpointer user_data);
+
+typedef enum
+{
+  META_SCREEN_TOPLEFT,
+  META_SCREEN_TOPRIGHT,
+  META_SCREEN_BOTTOMLEFT,
+  META_SCREEN_BOTTOMRIGHT
+} MetaScreenCorner;
 
 typedef enum
 {
@@ -119,7 +127,6 @@ struct _MetaScreen
   int columns_of_workspaces;
   MetaScreenCorner starting_corner;
   guint vertical_workspaces : 1;
-  guint workspace_layout_overridden : 1;
   
   guint keys_grabbed : 1;
   guint all_keys_grabbed : 1;
@@ -177,7 +184,6 @@ void          meta_screen_workspace_popup_destroy      (MetaScreen    *screen);
 
 void          meta_screen_tile_preview_update          (MetaScreen    *screen,
                                                         gboolean       delay);
-void          meta_screen_tile_preview_hide            (MetaScreen    *screen);
 
 MetaWindow*   meta_screen_get_mouse_window     (MetaScreen                 *screen,
                                                 MetaWindow                 *not_this_one);
@@ -247,7 +253,5 @@ void     meta_screen_workspace_switched (MetaScreen         *screen,
                                          int                 from,
                                          int                 to,
                                          MetaMotionDirection direction);
-
-void meta_screen_set_active_workspace_hint (MetaScreen *screen);
 
 #endif

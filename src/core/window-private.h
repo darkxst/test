@@ -35,10 +35,10 @@
 #define META_WINDOW_PRIVATE_H
 
 #include <config.h>
-#include <meta/compositor.h>
-#include <meta/window.h>
+#include "compositor.h"
+#include "window.h"
 #include "screen-private.h"
-#include <meta/util.h>
+#include "util.h"
 #include "stack.h"
 #include "iconcache.h"
 #include <X11/Xutil.h>
@@ -60,6 +60,13 @@ typedef enum {
 } MetaQueueType;
 
 #define NUMBER_OF_QUEUES 3
+
+typedef enum {
+  META_TILE_NONE,
+  META_TILE_LEFT,
+  META_TILE_RIGHT,
+  META_TILE_MAXIMIZED
+} MetaTileMode;
 
 struct _MetaWindow
 {
@@ -406,10 +413,6 @@ struct _MetaWindowClass
 #define META_WINDOW_TILED_SIDE_BY_SIDE(w)      ((w)->maximized_vertically && \
                                                 !(w)->maximized_horizontally && \
                                                  (w)->tile_mode != META_TILE_NONE)
-#define META_WINDOW_TILED_LEFT(w)     (META_WINDOW_TILED_SIDE_BY_SIDE(w) && \
-                                       (w)->tile_mode == META_TILE_LEFT)
-#define META_WINDOW_TILED_RIGHT(w)    (META_WINDOW_TILED_SIDE_BY_SIDE(w) && \
-                                       (w)->tile_mode == META_TILE_RIGHT)
 #define META_WINDOW_ALLOWS_MOVE(w)     ((w)->has_move_func && !(w)->fullscreen)
 #define META_WINDOW_ALLOWS_RESIZE_EXCEPT_HINTS(w)   ((w)->has_resize_func && !META_WINDOW_MAXIMIZED (w) && !META_WINDOW_TILED_SIDE_BY_SIDE(w) && !(w)->fullscreen && !(w)->shaded)
 #define META_WINDOW_ALLOWS_RESIZE(w)   (META_WINDOW_ALLOWS_RESIZE_EXCEPT_HINTS (w) &&                \
@@ -431,7 +434,6 @@ void        meta_window_unmanage           (MetaWindow  *window,
 void        meta_window_calc_showing       (MetaWindow  *window);
 void        meta_window_queue              (MetaWindow  *window,
                                             guint queuebits);
-void        meta_window_tile               (MetaWindow        *window);
 void        meta_window_maximize_internal  (MetaWindow        *window,
                                             MetaMaximizeFlags  directions,
                                             MetaRectangle     *saved_rect);

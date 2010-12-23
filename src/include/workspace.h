@@ -33,9 +33,9 @@
 #ifndef META_WORKSPACE_H
 #define META_WORKSPACE_H
 
-#include <meta/types.h>
-#include <meta/boxes.h>
-#include <meta/screen.h>
+#include "types.h"
+#include "boxes.h"
+#include "screen.h"
 
 #define META_TYPE_WORKSPACE            (meta_workspace_get_type ())
 #define META_WORKSPACE(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_WORKSPACE, MetaWorkspace))

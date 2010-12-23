@@ -27,7 +27,7 @@
  */
 
 #include "boxes-private.h"
-#include <meta/util.h>
+#include "util.h"
 #include <X11/Xutil.h>  /* Just for the definition of the various gravities */
 
 /* It would make sense to use GSlice here, but until we clean up the
@@ -340,6 +340,7 @@ meta_rectangle_resize_with_gravity (const MetaRectangle *old_rect,
    */
 
   /* First, the x direction */
+  int adjust = 0;
   switch (gravity)
     {
     case NorthWestGravity:
@@ -372,6 +373,7 @@ meta_rectangle_resize_with_gravity (const MetaRectangle *old_rect,
   rect->width = new_width;
   
   /* Next, the y direction */
+  adjust = 0;
   switch (gravity)
     {
     case NorthWestGravity:

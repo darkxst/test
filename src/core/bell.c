@@ -51,7 +51,7 @@
 #include <config.h>
 #include "bell.h"
 #include "screen-private.h"
-#include <meta/prefs.h>
+#include "prefs.h"
 #ifdef HAVE_LIBCANBERRA
 #include <canberra-gtk.h>
 #endif

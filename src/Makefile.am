@@ -1,30 +1,11 @@
 # Flag build for parallelism; see https://savannah.gnu.org/patch/?6905
 .AUTOPARALLEL:
 
-lib_LTLIBRARIES = libmutter-private.la libmutter-wm.la
+lib_LTLIBRARIES = libmutter-private.la
 
 SUBDIRS=wm-tester tools compositor/plugins
 
-INCLUDES=								\
-	$(MUTTER_CFLAGS)						\
-	-I$(srcdir)							\
-	-I$(srcdir)/core						\
-	-I$(srcdir)/ui							\
-	-I$(srcdir)/compositor						\
-	-DMUTTER_LIBEXECDIR=\"$(libexecdir)\"				\
-	-DHOST_ALIAS=\"@HOST_ALIAS@\"					\
-	-DMUTTER_LOCALEDIR=\"$(prefix)/@DATADIRNAME@/locale\"		\
-	-DMUTTER_PKGDATADIR=\"$(pkgdatadir)\"				\
-	-DMUTTER_DATADIR=\"$(datadir)\"					\
-	-DG_LOG_DOMAIN=\"mutter\"					\
-	-DSN_API_NOT_YET_FROZEN=1					\
-	-DMUTTER_MAJOR_VERSION=$(MUTTER_MAJOR_VERSION)			\
-	-DMUTTER_MINOR_VERSION=$(MUTTER_MINOR_VERSION)			\
-	-DMUTTER_MICRO_VERSION=$(MUTTER_MICRO_VERSION)			\
-	-DMUTTER_PLUGIN_API_VERSION=$(MUTTER_PLUGIN_API_VERSION)	\
-	-DMUTTER_PKGLIBDIR=\"$(pkglibdir)\"				\
-	-DMUTTER_PLUGIN_DIR=\"@MUTTER_PLUGIN_DIR@\"			\
-	-DGETTEXT_PACKAGE=\"$(GETTEXT_PACKAGE)\"
+INCLUDES=@MUTTER_CFLAGS@ -I $(srcdir)/include -I$(srcdir)/compositor -DMUTTER_LIBEXECDIR=\"$(libexecdir)\" -DHOST_ALIAS=\"@HOST_ALIAS@\" -DMUTTER_LOCALEDIR=\"$(prefix)/@DATADIRNAME@/locale\" -DMUTTER_PKGDATADIR=\"$(pkgdatadir)\" -DMUTTER_DATADIR=\"$(datadir)\" -DG_LOG_DOMAIN=\"mutter\" -DSN_API_NOT_YET_FROZEN=1 -DMUTTER_MAJOR_VERSION=$(MUTTER_MAJOR_VERSION) -DMUTTER_MINOR_VERSION=$(MUTTER_MINOR_VERSION) -DMUTTER_MICRO_VERSION=$(MUTTER_MICRO_VERSION) -DMUTTER_PLUGIN_API_VERSION=$(MUTTER_PLUGIN_API_VERSION) -DMUTTER_PKGLIBDIR=\"$(pkglibdir)\" -DMUTTER_PLUGIN_DIR=\"@MUTTER_PLUGIN_DIR@\"
 
 mutter_built_sources = \
 	mutter-marshal.h \
@@ -32,14 +13,14 @@ mutter_built_sources = \
 	mutter-enum-types.h \
 	mutter-enum-types.c
 
-libmutter_wm_la_SOURCES =			\
+mutter_SOURCES= 				\
 	core/async-getprop.c			\
 	core/async-getprop.h			\
 	core/bell.c				\
 	core/bell.h				\
 	core/boxes.c				\
 	core/boxes-private.h			\
-	meta/boxes.h				\
+	include/boxes.h				\
 	compositor/cogl-utils.c			\
 	compositor/cogl-utils.h			\
 	compositor/compositor.c			\
@@ -65,36 +46,36 @@ libmutter_wm_la_SOURCES =			\
 	compositor/meta-window-shape.h		\
 	compositor/region-utils.c		\
 	compositor/region-utils.h		\
-	meta/compositor.h			\
-	meta/meta-plugin.h			\
-	meta/meta-shadow-factory.h		\
-	meta/meta-window-actor.h		\
-	meta/compositor-mutter.h 		\
-	core/above-tab-keycode.c		\
+	include/compositor.h			\
+	include/meta-plugin.h			\
+	include/meta-shadow-factory.h		\
+	include/meta-window-actor.h		\
+	include/compositor-mutter.h 		\
 	core/constraints.c			\
 	core/constraints.h			\
 	core/core.c				\
 	core/delete.c				\
 	core/display.c				\
 	core/display-private.h			\
-	meta/display.h				\
+	include/display.h			\
 	ui/draw-workspace.c			\
 	ui/draw-workspace.h			\
 	core/edge-resistance.c			\
 	core/edge-resistance.h			\
 	core/errors.c				\
-	meta/errors.h				\
+	include/errors.h			\
 	core/eventqueue.c			\
 	core/eventqueue.h			\
 	core/frame.c				\
-	core/frame.h				\
+	core/frame-private.h			\
+	include/frame.h				\
 	ui/gradient.c				\
-	meta/gradient.h				\
+	ui/gradient.h				\
 	core/group-private.h			\
 	core/group-props.c			\
 	core/group-props.h			\
 	core/group.c				\
-	meta/group.h				\
+	include/group.h				\
 	core/iconcache.c			\
 	core/iconcache.h			\
 	core/keybindings.c			\
@@ -104,11 +85,11 @@ libmutter_wm_la_SOURCES =			\
 	core/place.c				\
 	core/place.h				\
 	core/prefs.c				\
-	meta/prefs.h				\
+	include/prefs.h				\
 	core/screen.c				\
 	core/screen-private.h			\
-	meta/screen.h				\
-	meta/types.h				\
+	include/screen.h			\
+	include/types.h                         \
 	core/session.c				\
 	core/session.h				\
 	core/stack.c				\
@@ -116,19 +97,19 @@ libmutter_wm_la_SOURCES =			\
 	core/stack-tracker.c			\
 	core/stack-tracker.h			\
 	core/util.c				\
-	meta/util.h				\
+	include/util.h				\
 	core/window-props.c			\
 	core/window-props.h			\
 	core/window.c				\
 	core/window-private.h			\
-	meta/window.h				\
+	include/window.h			\
 	core/workspace.c			\
 	core/workspace-private.h		\
 	core/xprops.c				\
-	core/xprops.h				\
-	meta/common.h				\
-	core/core.h				\
-	ui/ui.h					\
+	include/xprops.h			\
+	include/common.h			\
+	include/core.h				\
+	include/ui.h				\
 	inlinepixbufs.h				\
 	ui/fixedtip.c				\
 	ui/fixedtip.h				\
@@ -139,74 +120,71 @@ libmutter_wm_la_SOURCES =			\
 	ui/metaaccellabel.c			\
 	ui/metaaccellabel.h			\
 	ui/resizepopup.c			\
-	ui/resizepopup.h			\
+	include/resizepopup.h			\
 	ui/tabpopup.c				\
-	ui/tabpopup.h				\
+	include/tabpopup.h				\
 	ui/tile-preview.c			\
-	ui/tile-preview.h			\
+	include/tile-preview.h			\
 	ui/theme-parser.c			\
 	ui/theme.c				\
-	meta/theme.h				\
+	ui/theme.h				\
 	ui/theme-private.h			\
 	ui/ui.c					\
-	core/all-keybindings.h			\
+	include/all-keybindings.h               \
 	$(mutter_built_sources)
-
-libmutter_wm_la_LDFLAGS = -no-undefined
-libmutter_wm_la_LIBADD  = $(MUTTER_LIBS)
 
 # by setting libmutter_private_la_CFLAGS, the files shared with
 # mutter proper will be compiled with different names.
 libmutter_private_la_CFLAGS =
 libmutter_private_la_SOURCES=			\
 	core/boxes.c				\
-	meta/boxes.h				\
+	include/boxes.h				\
 	ui/gradient.c				\
-	meta/gradient.h				\
+	ui/gradient.h				\
 	core/util.c				\
-	meta/util.h				\
-	meta/common.h				\
+	include/util.h				\
+	include/common.h			\
 	ui/preview-widget.c			\
-	meta/preview-widget.h			\
+	ui/preview-widget.h			\
 	ui/theme-parser.c			\
 	ui/theme.c				\
-	meta/theme.h
+	ui/theme.h
 
 libmutter_private_la_LDFLAGS = -no-undefined
-libmutter_private_la_LIBADD  = $(MUTTER_LIBS)
+libmutter_private_la_LIBADD  = @MUTTER_LIBS@
 
 # Headers installed for plugins; introspected information will
 # be extracted into Mutter-<version>.gir
 libmutterinclude_base_headers =		\
-	meta/boxes.h				\
-	meta/common.h				\
-	meta/compositor-mutter.h		\
-	meta/compositor.h			\
-	meta/display.h				\
-	meta/errors.h				\
-	meta/gradient.h				\
-	meta/group.h				\
-	meta/keybindings.h			\
-	meta/main.h				\
-	meta/meta-plugin.h			\
-	meta/meta-shadow-factory.h		\
-	meta/meta-window-actor.h		\
-	meta/prefs.h				\
-	meta/screen.h				\
-	meta/theme.h				\
-	meta/types.h				\
-	meta/util.h				\
-	meta/window.h				\
-	meta/workspace.h
+	include/boxes.h				\
+	ui/gradient.h				\
+	include/main.h				\
+	include/util.h				\
+	include/common.h			\
+	ui/theme.h				\
+	include/prefs.h				\
+	include/window.h			\
+	include/workspace.h			\
+	include/compositor.h			\
+	include/compositor-mutter.h		\
+	include/types.h				\
+	include/errors.h			\
+	include/screen.h			\
+	include/display.h			\
+	include/group.h				\
+	include/keybindings.h			\
+	include/meta-plugin.h			\
+	include/meta-shadow-factory.h		\
+	include/meta-window-actor.h
 
 # Excluded from scanning for introspection but installed
 # preview-widget.h: only part of libmutter-private
 # atomnames.h: macros cause problems for scanning process
 libmutterinclude_extra_headers =		\
-	meta/preview-widget.h			\
-	meta/atomnames.h
+	ui/preview-widget.h			\
+	include/atomnames.h
 
-libmutterincludedir = $(includedir)/mutter/meta
+libmutterincludedir = $(includedir)/mutter/mutter-private
 
 libmutterinclude_HEADERS =			\
 	$(libmutterinclude_base_headers)	\
@@ -217,14 +195,9 @@ mutter_theme_viewer_SOURCES=  \
 
 bin_PROGRAMS=mutter mutter-theme-viewer
 
-mutter_SOURCES = core/mutter.c
-mutter_LDADD = libmutter-wm.la
-
-if HAVE_INTROSPECTION
-include $(INTROSPECTION_MAKEFILE)
-
 api_version = $(MUTTER_MAJOR_VERSION).$(MUTTER_MINOR_VERSION)
 
+if WITH_INTROSPECTION
 # These files are in package-private directories, even though they may be used
 # by plugins.  If you're writing a plugin, use g-ir-compiler --add-include-path
 # and g-ir-compiler --includedir.
@@ -234,32 +207,50 @@ gir_DATA = Meta-$(api_version).gir
 typelibdir = $(pkglibdir)
 typelib_DATA = Meta-$(api_version).typelib
 
-INTROSPECTION_GIRS = Meta-$(api_version).gir
+# We need to strip out the attribute that would point back to libmutter-introspect
+# so that libgirepository looks for symbols in the executable instead
+Meta-$(api_version).gir: $(G_IR_SCANNER) mutter $(libmutterinclude_HEADERS) $(mutter_SOURCES) Makefile
+	$(AM_V_GEN) pwd=`pwd` ;				\
+        cd $(srcdir) &&					\
+	$(G_IR_SCANNER)					\
+		--namespace=Meta			\
+		--nsversion=$(api_version)		\
+		--warn-all				\
+		--warn-error				\
+		--include=GObject-2.0			\
+		--include=Gdk-3.0			\
+		--include=Gtk-3.0			\
+		--include=Clutter-1.0			\
+		--pkg=clutter-1.0			\
+		--pkg=gtk+-3.0				\
+		--include=xlib-2.0			\
+		--include=xfixes-4.0			\
+		--program=$$pwd/mutter			\
+		mutter-enum-types.h			\
+		$(filter %.c,$(mutter_SOURCES))		\
+		$(libmutterinclude_base_headers)	\
+		$(INCLUDES)				\
+		-o $$pwd/$@
 
-Meta-$(api_version).gir: libmutter-wm.la
-@META_GIR@_INCLUDES = GObject-2.0 Gdk-3.0 Gtk-3.0 Clutter-1.0 xlib-2.0 xfixes-4.0
-@META_GIR@_PACKAGES = clutter-1.0 gtk+-3.0
-@META_GIR@_CFLAGS = $(INCLUDES)
-@META_GIR@_LIBS = libmutter-wm.la
-@META_GIR@_FILES =				\
-	mutter-enum-types.h			\
-	$(libmutterinclude_base_headers)	\
-	$(filter %.c,$(libmutter_wm_la_SOURCES))
-@META_GIR@_SCANNERFLAGS = --warn-all --warn-error
-
+Meta-$(api_version).typelib: $(G_IR_COMPILER) Meta-$(api_version).gir
+	$(AM_V_GEN) LD_LIBRARY_PATH=$${LD_LIBRARY_PATH:+$$LD_LIBRARY_PATH:}. $(G_IR_COMPILER) Meta-$(api_version).gir -o $@
 endif
 
-mutter_theme_viewer_LDADD= $(MUTTER_LIBS) libmutter-private.la
+EFENCE=
+mutter_LDADD=@MUTTER_LIBS@ $(EFENCE)
+mutter_LDFLAGS=-export-dynamic
 
-testboxes_SOURCES = core/testboxes.c
-testgradient_SOURCES = ui/testgradient.c
-testasyncgetprop_SOURCES = core/testasyncgetprop.c
+mutter_theme_viewer_LDADD= @MUTTER_LIBS@ libmutter-private.la
+
+testboxes_SOURCES=include/util.h core/util.c include/boxes.h core/boxes.c core/testboxes.c
+testgradient_SOURCES=ui/gradient.h ui/gradient.c ui/testgradient.c
+testasyncgetprop_SOURCES=core/async-getprop.h core/async-getprop.c core/testasyncgetprop.c
 
 noinst_PROGRAMS=testboxes testgradient testasyncgetprop
 
-testboxes_LDADD = libmutter-wm.la
-testgradient_LDADD = libmutter-wm.la
-testasyncgetprop_LDADD = libmutter-wm.la
+testboxes_LDADD= @MUTTER_LIBS@
+testgradient_LDADD= @MUTTER_LIBS@
+testasyncgetprop_LDADD= @MUTTER_LIBS@
 
 @INTLTOOL_DESKTOP_RULE@
 
@@ -273,7 +264,7 @@ wmproperties_in_files=mutter-wm.desktop.in
 wmproperties_files=$(wmproperties_in_files:.desktop.in=.desktop)
 wmproperties_DATA = $(wmproperties_files)
 
-schemadir   = $(GCONF_SCHEMA_FILE_DIR)
+schemadir   = @GCONF_SCHEMA_FILE_DIR@
 schema_in_files = mutter.schemas.in
 schema_DATA = $(schema_in_files:.schemas.in=.schemas)
 
@@ -308,7 +299,7 @@ inlinepixbufs.h: $(IMAGES)
 
 pkgconfigdir = $(libdir)/pkgconfig
 
-pkgconfig_DATA = libmutter-private.pc libmutter-wm.pc mutter-plugins.pc
+pkgconfig_DATA = libmutter-private.pc mutter-plugins.pc
 
 EXTRA_DIST=$(desktopfiles_files) 	\
 	$(wmproperties_files)		\
@@ -317,7 +308,6 @@ EXTRA_DIST=$(desktopfiles_files) 	\
 	$(wmproperties_in_files)	\
 	$(schema_in_files)		\
 	libmutter-private.pc.in	\
-	libmutter-wm.pc.in \
 	mutter-plugins.pc.in  \
 	mutter-enum-types.h.in \
 	mutter-enum-types.c.in \

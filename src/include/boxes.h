@@ -25,7 +25,7 @@
 #define META_BOXES_H
 
 #include <glib-object.h>
-#include <meta/common.h>
+#include "common.h"
 
 #define META_TYPE_RECTANGLE            (meta_rectangle_get_type ())
 

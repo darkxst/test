@@ -34,11 +34,11 @@
 #include <glib.h>
 #include <X11/Xlib.h>
 #include "eventqueue.h"
-#include <meta/common.h>
-#include <meta/boxes.h>
-#include <meta/display.h>
+#include "common.h"
+#include "boxes.h"
+#include "display.h"
 #include "keybindings-private.h"
-#include <meta/prefs.h>
+#include "prefs.h"
 
 #ifdef HAVE_STARTUP_NOTIFICATION
 #include <libsn/sn.h>
@@ -77,13 +77,6 @@ typedef enum {
  */
 #define N_IGNORED_SERIALS           4
 
-typedef enum {
-  META_TILE_NONE,
-  META_TILE_LEFT,
-  META_TILE_RIGHT,
-  META_TILE_MAXIMIZED
-} MetaTileMode;
-
 struct _MetaDisplay
 {
   GObject parent_instance;
@@ -99,7 +92,7 @@ struct _MetaDisplay
    * class is constructed.
    */
 #define item(x)  Atom atom_##x;
-#include <meta/atomnames.h>
+#include "atomnames.h"
 #undef item
 
   /* This is the actual window from focus events,
@@ -186,7 +179,6 @@ struct _MetaDisplay
   int         grab_anchor_root_x;
   int         grab_anchor_root_y;
   MetaRectangle grab_anchor_window_pos;
-  MetaTileMode  grab_tile_mode;
   int         grab_latest_motion_x;
   int         grab_latest_motion_y;
   gulong      grab_mask;
@@ -229,7 +221,6 @@ struct _MetaDisplay
   KeySym *keymap;
   int keysyms_per_keycode;
   XModifierKeymap *modmap;
-  unsigned int above_tab_keycode;
   unsigned int ignored_modifier_mask;
   unsigned int num_lock_mask;
   unsigned int scroll_lock_mask;
@@ -441,8 +432,5 @@ void meta_display_queue_autoraise_callback  (MetaDisplay *display,
 void meta_display_remove_autoraise_callback (MetaDisplay *display);
 
 void meta_display_overlay_key_activate (MetaDisplay *display);
-
-/* In above-tab-keycode.c */
-guint meta_display_get_above_tab_keycode (MetaDisplay *display);
 
 #endif

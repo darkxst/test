@@ -24,10 +24,10 @@
  */
 
 #include <config.h>
-#include <meta/prefs.h>
+#include "prefs.h"
 #include "ui.h"
-#include <meta/util.h>
-#include "meta-plugin-manager.h"
+#include "util.h"
+#include "compositor/meta-plugin-manager.h"
 #ifdef HAVE_GCONF
 #include <gconf/gconf-client.h>
 #endif
@@ -50,6 +50,7 @@
  */
 #define KEY_TITLEBAR_FONT "/apps/metacity/general/titlebar_font"
 #define KEY_NUM_WORKSPACES "/apps/metacity/general/num_workspaces"
+#define KEY_COMPOSITOR "/apps/metacity/general/compositing_manager"
 #define KEY_GNOME_ACCESSIBILITY "/desktop/gnome/interface/accessibility"
 
 #define KEY_COMMAND_DIRECTORY "/apps/metacity/keybinding_commands"
@@ -65,6 +66,8 @@
 
 #define KEY_WORKSPACE_NAME_DIRECTORY "/apps/metacity/workspace_names"
 #define KEY_WORKSPACE_NAME_PREFIX "/apps/metacity/workspace_names/name_"
+
+#define KEY_CLUTTER_PLUGINS  "/apps/mutter/general/clutter_plugins"
 
 #define KEY_LIVE_HIDDEN_WINDOWS "/apps/mutter/general/live_hidden_windows"
 
@@ -99,6 +102,7 @@ static gboolean gnome_accessibility = FALSE;
 static gboolean gnome_animations = TRUE;
 static char *cursor_theme = NULL;
 static int   cursor_size = 24;
+static gboolean compositing_manager = FALSE;
 static gboolean resize_with_right_button = FALSE;
 static gboolean edge_tiling = FALSE;
 static gboolean force_fullscreen = TRUE;
@@ -112,6 +116,9 @@ static char *commands[MAX_COMMANDS] = { NULL, };
 static char *terminal_command = NULL;
 
 static char *workspace_names[MAX_REASONABLE_WORKSPACES] = { NULL, };
+
+static gboolean clutter_plugins_overridden = FALSE;
+static GSList *clutter_plugins = NULL;
 
 static gboolean live_hidden_windows = FALSE;
 
@@ -405,6 +412,11 @@ static MetaBoolPreference preferences_bool[] =
       META_PREF_GNOME_ANIMATIONS,
       &gnome_animations,
       TRUE,
+    },
+    { "/apps/metacity/general/compositing_manager",
+      META_PREF_COMPOSITING_MANAGER,
+      &compositing_manager,
+      FALSE,
     },
     { "/apps/metacity/general/resize_with_right_button",
       META_PREF_RESIZE_WITH_RIGHT_BUTTON,
@@ -1046,6 +1058,7 @@ meta_prefs_init (void)
 #ifdef HAVE_GCONF
   GError *err = NULL;
   gchar **gconf_dir_cursor;
+  MetaPluginManager *plugin_manager;
   
   if (default_client != NULL)
     return;
@@ -1063,6 +1076,19 @@ meta_prefs_init (void)
                             &err);
       cleanup_error (&err);
     }
+
+  /* The plugin list is special and needs to be handled first */
+
+  if (!clutter_plugins_overridden)
+    clutter_plugins = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
+                                             GCONF_VALUE_STRING, &err);
+
+  cleanup_error (&err);
+
+  /* We now initialize plugins so that they can override any preference locations */
+
+  plugin_manager = meta_plugin_manager_get_default ();
+  meta_plugin_manager_load (plugin_manager);
 
   /* Pick up initial values. */
 
@@ -1376,6 +1402,23 @@ change_notify (GConfClient    *client,
   else if (g_str_equal (key, KEY_OVERLAY_KEY))
     {
       queue_changed (META_PREF_KEYBINDINGS);
+    }
+  else if (g_str_equal (key, KEY_CLUTTER_PLUGINS) && !clutter_plugins_overridden)
+    {
+      GError *err = NULL;
+      GSList *l;
+
+      l = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
+                                 GCONF_VALUE_STRING, &err);
+
+      if (!l)
+        {
+          cleanup_error (&err);
+          goto out;
+        }
+
+      clutter_plugins = l;
+      queue_changed (META_PREF_CLUTTER_PLUGINS);
     }
   else
     {
@@ -1961,6 +2004,9 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_CURSOR_SIZE:
       return "CURSOR_SIZE";
 
+    case META_PREF_COMPOSITING_MANAGER:
+      return "COMPOSITING_MANAGER";
+
     case META_PREF_RESIZE_WITH_RIGHT_BUTTON:
       return "RESIZE_WITH_RIGHT_BUTTON";
 
@@ -1969,6 +2015,9 @@ meta_preference_to_string (MetaPreference pref)
 
     case META_PREF_FORCE_FULLSCREEN:
       return "FORCE_FULLSCREEN";
+
+    case META_PREF_CLUTTER_PLUGINS:
+      return "CLUTTER_PLUGINS";
 
     case META_PREF_LIVE_HIDDEN_WINDOWS:
       return "LIVE_HIDDEN_WINDOWS";
@@ -2943,6 +2992,12 @@ meta_prefs_get_window_binding (const char          *name,
   g_assert_not_reached ();
 }
 
+gboolean
+meta_prefs_get_compositing_manager (void)
+{
+  return compositing_manager;
+}
+
 guint
 meta_prefs_get_mouse_button_resize (void)
 {
@@ -2959,6 +3014,74 @@ gboolean
 meta_prefs_get_force_fullscreen (void)
 {
   return force_fullscreen;
+}
+
+void
+meta_prefs_set_compositing_manager (gboolean whether)
+{
+#ifdef HAVE_GCONF
+  GError *err = NULL;
+
+  gconf_client_set_bool (default_client,
+                         KEY_COMPOSITOR,
+                         whether,
+                         &err);
+
+  if (err)
+    {
+      meta_warning (_("Error setting compositor status: %s\n"),
+                    err->message);
+      g_error_free (err);
+    }
+#else
+  compositing_manager = whether;
+#endif
+}
+
+/**
+ * meta_prefs_get_clutter_plugins:
+ *
+ * Returns: (transfer none) (element-type utf8): Plugin names to load
+ */
+GSList *
+meta_prefs_get_clutter_plugins (void)
+{
+  return clutter_plugins;
+}
+
+void
+meta_prefs_set_clutter_plugins (GSList *list)
+{
+#ifdef HAVE_GCONF
+  GError *err = NULL;
+
+  gconf_client_set_list (default_client,
+                         KEY_CLUTTER_PLUGINS,
+                         GCONF_VALUE_STRING,
+                         list,
+                         &err);
+
+  if (err)
+    {
+      meta_warning (_("Error setting clutter plugin list: %s\n"),
+                    err->message);
+      g_error_free (err);
+    }
+#endif
+}
+
+void
+meta_prefs_override_clutter_plugins (GSList *list)
+{
+  GSList *l;
+
+  clutter_plugins_overridden = TRUE;
+  clutter_plugins = NULL;
+
+  for (l = list; l; l = l->next)
+    clutter_plugins = g_slist_prepend (clutter_plugins, g_strdup(l->data));
+
+  clutter_plugins = g_slist_reverse (clutter_plugins);
 }
 
 gboolean
@@ -3019,6 +3142,12 @@ meta_prefs_set_no_tab_popup (gboolean whether)
 #else
   no_tab_popup = whether;
 #endif
+}
+
+void
+meta_prefs_override_no_tab_popup (gboolean whether)
+{
+  no_tab_popup = whether;
 }
 
 #ifndef HAVE_GCONF
