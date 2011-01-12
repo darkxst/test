@@ -1267,8 +1267,7 @@ meta_workspace_focus_default_window (MetaWorkspace *workspace,
         }
       else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_SLOPPY)
         focus_ancestor_or_mru_window (workspace, not_this_one, timestamp);
-      else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_MOUSE ||
-               meta_prefs_get_focus_mode () == META_FOCUS_MODE_STRICT)
+      else if (meta_prefs_get_focus_mode () == META_FOCUS_MODE_MOUSE)
         {
           meta_topic (META_DEBUG_FOCUS,
                       "Setting focus to no_focus_window, since no valid "

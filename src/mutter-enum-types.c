@@ -180,6 +180,8 @@ meta_frame_flags_get_type (void)
         { META_FRAME_FULLSCREEN, "META_FRAME_FULLSCREEN", "fullscreen" },
         { META_FRAME_IS_FLASHING, "META_FRAME_IS_FLASHING", "is-flashing" },
         { META_FRAME_ABOVE, "META_FRAME_ABOVE", "above" },
+        { META_FRAME_TILED_LEFT, "META_FRAME_TILED_LEFT", "tiled-left" },
+        { META_FRAME_TILED_RIGHT, "META_FRAME_TILED_RIGHT", "tiled-right" },
         { 0, NULL, NULL }
       };
       GType g_enum_type_id;
@@ -632,7 +634,6 @@ meta_preference_get_type (void)
         { META_PREF_GNOME_ANIMATIONS, "META_PREF_GNOME_ANIMATIONS", "gnome-animations" },
         { META_PREF_CURSOR_THEME, "META_PREF_CURSOR_THEME", "cursor-theme" },
         { META_PREF_CURSOR_SIZE, "META_PREF_CURSOR_SIZE", "cursor-size" },
-        { META_PREF_COMPOSITING_MANAGER, "META_PREF_COMPOSITING_MANAGER", "compositing-manager" },
         { META_PREF_RESIZE_WITH_RIGHT_BUTTON, "META_PREF_RESIZE_WITH_RIGHT_BUTTON", "resize-with-right-button" },
         { META_PREF_EDGE_TILING, "META_PREF_EDGE_TILING", "edge-tiling" },
         { META_PREF_FORCE_FULLSCREEN, "META_PREF_FORCE_FULLSCREEN", "force-fullscreen" },

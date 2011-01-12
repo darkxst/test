@@ -1709,36 +1709,6 @@ ancestor_is_minimized (MetaWindow *window)
 }
 
 gboolean
-meta_window_is_minimized (MetaWindow *window)
-{
-  return window->minimized;
-}
-
-gboolean
-meta_window_is_maximized (MetaWindow *window)
-{
-  return META_WINDOW_MAXIMIZED(window);
-}
-
-gboolean
-meta_window_is_maximized_horizontally (MetaWindow *window)
-{
-  return META_WINDOW_MAXIMIZED_HORIZONTALLY (window);
-}
-
-gboolean
-meta_window_is_maximized_vertically (MetaWindow *window)
-{
-  return META_WINDOW_MAXIMIZED_VERTICALLY (window);
-}
-
-gboolean
-meta_window_allows_resize (MetaWindow *window)
-{
-  return META_WINDOW_ALLOWS_RESIZE (window);
-}
-
-gboolean
 meta_window_showing_on_its_workspace (MetaWindow *window)
 {
   gboolean showing;
@@ -2708,6 +2678,8 @@ meta_window_show (MetaWindow *window)
 
   if (!window->visible_to_compositor)
     {
+      window->visible_to_compositor = TRUE;
+
       if (window->display->compositor)
         {
           MetaCompEffect effect = META_COMP_EFFECT_NONE;
@@ -2727,8 +2699,6 @@ meta_window_show (MetaWindow *window)
           meta_compositor_show_window (window->display->compositor,
                                        window, effect);
         }
-
-      window->visible_to_compositor = TRUE;
     }
 
   /* We don't want to worry about all cases from inside
@@ -2738,7 +2708,7 @@ meta_window_show (MetaWindow *window)
   if (window->showing_for_first_time)
     {
       window->showing_for_first_time = FALSE;
-      if (takes_focus_on_map && meta_prefs_get_focus_mode () != META_FOCUS_MODE_STRICT)
+      if (takes_focus_on_map)
         {
           guint32     timestamp;
 
@@ -2799,6 +2769,8 @@ meta_window_hide (MetaWindow *window)
 
   if (window->visible_to_compositor)
     {
+      window->visible_to_compositor = FALSE;
+
       if (window->display->compositor)
         {
           MetaCompEffect effect = META_COMP_EFFECT_NONE;
@@ -2818,8 +2790,6 @@ meta_window_hide (MetaWindow *window)
           meta_compositor_hide_window (window->display->compositor,
                                        window, effect);
         }
-
-      window->visible_to_compositor = FALSE;
     }
 
   did_hide = FALSE;

@@ -2566,11 +2566,6 @@ func_mode_execute ()
 	func_dirname "$file" "" "."
 	dir="$func_dirname_result"
 	;;
-        
-       -Wl,--as-needed)
-        deplibs="$deplibs $arg"
-        continue
-        ;;
 
       *)
 	func_warning "\`-dlopen' is ignored for non-libtool libraries and objects"
@@ -6152,15 +6147,6 @@ func_mode_link ()
 	lib=
 	found=no
 	case $deplib in
-        -Wl,--as-needed)
-          if test "$linkmode,$pass" = "prog,link"; then
-            compile_deplibs="$deplib $compile_deplibs"
-            finalize_deplibs="$deplib $finalize_deplibs"
-          else
-            deplibs="$deplib $deplibs"
-          fi
-          continue
-          ;;
 	-mt|-mthreads|-kthread|-Kthread|-pthread|-pthreads|--thread-safe|-threads)
 	  if test "$linkmode,$pass" = "prog,link"; then
 	    compile_deplibs="$deplib $compile_deplibs"

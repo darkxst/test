@@ -131,9 +131,6 @@ G_DEFINE_TYPE(MetaDisplay, meta_display, G_TYPE_OBJECT);
 enum
 {
   OVERLAY_KEY,
-  OVERLAY_KEY_DOWN,
-  OVERLAY_KEY_WITH_MODIFIER,
-  OVERLAY_KEY_WITH_MODIFIER_DOWN,
   FOCUS_WINDOW,
   WINDOW_CREATED,
   WINDOW_DEMANDS_ATTENTION,
@@ -236,33 +233,6 @@ meta_display_class_init (MetaDisplayClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__VOID,
                   G_TYPE_NONE, 0);
-
-  display_signals[OVERLAY_KEY_DOWN] =
-    g_signal_new ("overlay-key-down",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0,
-                  NULL, NULL,
-                  g_cclosure_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
-
-  display_signals[OVERLAY_KEY_WITH_MODIFIER] =
-    g_signal_new ("overlay-key-with-modifier",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0,
-                  NULL, NULL,
-                  g_cclosure_marshal_VOID__UINT,
-                  G_TYPE_NONE, 1, G_TYPE_UINT);
-
-  display_signals[OVERLAY_KEY_WITH_MODIFIER_DOWN] =
-    g_signal_new ("overlay-key-with-modifier-down",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  0,
-                  NULL, NULL,
-                  g_cclosure_marshal_VOID__UINT,
-                  G_TYPE_NONE, 1, G_TYPE_UINT);
 
   display_signals[WINDOW_CREATED] =
     g_signal_new ("window-created",
@@ -415,26 +385,6 @@ enable_compositor (MetaDisplay *display,
       if (composite_windows)
         meta_screen_composite_all_windows (screen);
     }
-}
-
-static void
-disable_compositor (MetaDisplay *display)
-{
-  GSList *list;
-  
-  if (!display->compositor)
-    return;
-  
-  for (list = display->screens; list != NULL; list = list->next)
-    {
-      MetaScreen *screen = list->data;
-      
-      meta_compositor_unmanage_screen (screen->display->compositor,
-				       screen);
-    }
-  
-  meta_compositor_destroy (display->compositor);
-  display->compositor = NULL;
 }
 
 static void
@@ -869,8 +819,7 @@ meta_display_open (void)
   /* We don't composite the windows here because they will be composited 
      faster with the call to meta_screen_manage_all_windows further down 
      the code */
-  if (1) /* meta_prefs_get_compositing_manager ()) FIXME */
-    enable_compositor (the_display, FALSE);
+  enable_compositor (the_display, FALSE);
    
   meta_display_grab (the_display);
   
@@ -2049,7 +1998,6 @@ event_callback (XEvent   *event,
         {
           switch (meta_prefs_get_focus_mode ())
             {
-            case META_FOCUS_MODE_STRICT:
             case META_FOCUS_MODE_SLOPPY:
             case META_FOCUS_MODE_MOUSE:
               display->mouse_mode = TRUE;
@@ -3598,7 +3546,7 @@ meta_display_begin_grab_op (MetaDisplay *display,
   meta_display_set_grab_op_cursor (display, screen, op, FALSE, grab_xwindow,
                                    timestamp);
 
-  if (!display->grab_have_pointer && !grab_op_is_keyboard (op))
+  if (!display->grab_have_pointer)
     {
       meta_topic (META_DEBUG_WINDOW_OPS,
                   "XGrabPointer() failed\n");
@@ -5218,15 +5166,6 @@ prefs_changed_callback (MetaPreference pref,
   else if (pref == META_PREF_AUDIBLE_BELL)
     {
       meta_bell_set_audible (display, meta_prefs_bell_is_audible ());
-    }
-  else if (pref == META_PREF_COMPOSITING_MANAGER)
-    {
-      gboolean cm = meta_prefs_get_compositing_manager ();
-
-      if (cm)
-        enable_compositor (display, TRUE);
-      else
-	disable_compositor (display);
     }
   else if (pref == META_PREF_ATTACH_MODAL_DIALOGS)
     {

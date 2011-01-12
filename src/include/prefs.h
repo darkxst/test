@@ -58,14 +58,12 @@ typedef enum
   META_PREF_GNOME_ANIMATIONS,
   META_PREF_CURSOR_THEME,
   META_PREF_CURSOR_SIZE,
-  META_PREF_COMPOSITING_MANAGER,
   META_PREF_RESIZE_WITH_RIGHT_BUTTON,
   META_PREF_EDGE_TILING,
   META_PREF_FORCE_FULLSCREEN,
   META_PREF_CLUTTER_PLUGINS,
   META_PREF_LIVE_HIDDEN_WINDOWS,
-  META_PREF_NO_TAB_POPUP,
-  META_PREF_HIDE_DECORATOR_TOOLTIP
+  META_PREF_NO_TAB_POPUP
 } MetaPreference;
 
 typedef void (* MetaPrefsChangedFunc) (MetaPreference pref,
@@ -90,7 +88,6 @@ MetaFocusMode               meta_prefs_get_focus_mode         (void);
 MetaFocusNewWindows         meta_prefs_get_focus_new_windows  (void);
 gboolean                    meta_prefs_get_attach_modal_dialogs (void);
 gboolean                    meta_prefs_get_raise_on_click     (void);
-gboolean                    meta_prefs_get_hide_decorator_tooltip (void);
 const char*                 meta_prefs_get_theme              (void);
 /* returns NULL if GTK default should be used */
 const PangoFontDescription* meta_prefs_get_titlebar_font      (void);

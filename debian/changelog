@@ -1,180 +1,98 @@
-mutter (2.91.4-0ubuntu1) natty; urgency=low
+mutter (2.91.5-1) experimental; urgency=low
 
-  * New upstream release
-  * debian/control:
-    - Bump build-depends on libgtk3.0-dev
-    - Rename gir1.0 packages to gir1.2
-
- -- Robert Ancell <robert.ancell@canonical.com>  Thu, 23 Dec 2010 10:04:31 +1100
-
-mutter (2.91.3-0ubuntu1) natty; urgency=low
-
-  * New upstream release
-
- -- Robert Ancell <robert.ancell@canonical.com>  Tue, 30 Nov 2010 10:56:20 +1100
-
-mutter (2.91.2-0ubuntu1) natty; urgency=low
-
-  * New upstream release
-  * debian/control:
-    - Bump build-depends on gobject-introspection, libgtk3.0-dev
-    - Add build-depends on libcairo2-dev, libcanberra-gtk3-dev
-    - Drop obsolete build-depends on gir-repository-dev
-    - Use standards-version 3.9.1
-  * debian/rules:
-    - Drop patchsys-quilt.mk
-  * debian/source:
-    - Use source version 3.0
-  * debian/patches/00_git_cairo_api.patch:
-  * debian/patches/00_git_get_back_pixmap.patch:
-  * debian/patches/92_handle_event_mask_when_managing_window.patch:
-    - Applied upstream
-  * debian/patches/14_wrong_colormap.patch:
-  * debian/patches/16_paint_clone_unclipped.patch:
-  * debian/patches/18_unmimize.patch:
-  * debian/patches/20_unity_no_3D_detection.patch:
-  * debian/patches/91_add_window_groups.patch:
-  * debian/patches/95_workaround_gdk_compat.patch:
-    - Dropped, obsolete
-
- -- Robert Ancell <robert.ancell@canonical.com>  Fri, 26 Nov 2010 11:20:46 +1100
-
-mutter (2.31.5-0ubuntu9) maverick; urgency=low
-
-  * debian/patches/20_unity_no_3D_detection.patch:
-    - add an extra string in fallback mode to guide user in live session
-      (LP: #651085)
-
- -- Didier Roche <didrocks@ubuntu.com>  Fri, 01 Oct 2010 11:39:17 +0200
-
-mutter (2.31.5-0ubuntu8) maverick; urgency=low
-
-  * debian/patches/20_unity_no_3D_detection.patch:
-    - detect in UNE session if the graphical driver is software-rendered.
-      if so, exit from the session after prompting and write the .dmrc file
-      to the gnome session (LP: #614088)
-  * debian/control:
-    - add libdbus-glib-1-dev build-dep
-
- -- Didier Roche <didrocks@ubuntu.com>  Mon, 27 Sep 2010 21:53:21 +0200
-
-mutter (2.31.5-0ubuntu7) maverick; urgency=low
-
-  * debian/patches/18_unmimize.patch:
-    - Revert dropping this patch, it wasn't the causing 
-      (LP: #637108), which is now fixed in indicator-appmenu
-
- -- Ken VanDine <ken.vandine@canonical.com>  Thu, 16 Sep 2010 09:47:58 -0400
-
-mutter (2.31.5-0ubuntu6) maverick; urgency=low
-
-  * removing debian/patches/18_unmimize.patch making apps closing when opening
-    (reopening corresponding bug and fixing LP: #637108)
-
- -- Didier Roche <didrocks@ubuntu.com>  Tue, 14 Sep 2010 16:52:01 +0200
-
-mutter (2.31.5-0ubuntu5) maverick; urgency=low
-
-  [ Robert Ancell ]
-  * debian/patches/00_git_cairo_api.patch:
-  * debian/patches/00_git_get_back_pixmap.patch:
-    - Take upstream git changes to fix FTBFS
-  * debian/patches/18_unmimize.patch:
-    - Fix unminimized windows not being mapped (LP: #620758)
-
-  [ Didier Roche ]
-  * debian/patches/95_workaround_gdk_compat.patch:
-    - port 2.31.5-0ubuntu3.1 inline patch to quilt for vcs handling
-
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 02 Sep 2010 18:10:44 +0200
-
-mutter (2.31.5-0ubuntu4) maverick; urgency=low
-
-  * no change rebuild after landing clutter .pc file fixes; see LP: #623376
-
- -- Alexander Sack <asac@linaro.org>  Tue, 24 Aug 2010 23:09:35 +0200
-
-mutter (2.31.5-0ubuntu3.1) maverick; urgency=low
-
-  * src/gdk-compat.h: workaround issue with the new gdk there
-
- -- Sebastien Bacher <seb128@ubuntu.com>  Wed, 18 Aug 2010 23:24:19 +0200
-
-mutter (2.31.5-0ubuntu3) maverick; urgency=low
-
-  * debian/patches/17_add_overlay_key_signals.patch:
-    - additional signals when triggering key
-
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 12 Aug 2010 15:14:39 +0200
-
-mutter (2.31.5-0ubuntu2) maverick; urgency=low
-
-  * debian/control.in:
-    - build-dep on latest libgirepository1.0-dev and libclutter-1.0-dev
-      for gir change
-
- -- Didier Roche <didrocks@ubuntu.com>  Tue, 10 Aug 2010 20:03:28 +0200
-
-mutter (2.31.5-0ubuntu1) maverick; urgency=low
-
-  * New upstream release:
-    - Don't use JsonClutter but rather system one (LP: #614230)
-  * adapt debian/patches/01_Wcast-align.patch
-  * debian/control.in, debian/rules:
-    - build-dep on dh-autoreconf and launch it on build
-    - remove debian/patches/90_autotools.patch
-    - Breaks: unity << 0.2.24 and gnome-shell <= 2.31.2-1ubuntu1
-  * debian/mutter-common.install:
-    - locale no more installed
-
- -- Didier Roche <didrocks@ubuntu.com>  Fri, 06 Aug 2010 16:24:26 +0200
-
-mutter (2.31.2-3ubuntu3) maverick; urgency=low
-
-  * add debian/patches/16_paint_clone_unclipped.patch:
-    Paint the full region and not only the clipped one for clone 
-    (Jason Smith)
-
- -- Didier Roche <didrocks@ubuntu.com>  Mon, 19 Jul 2010 14:12:04 +0200
-
-mutter (2.31.2-3ubuntu2) maverick; urgency=low
-
-  * debian/patches/92_handle_event_mask_when_managing_window.patch:
-    - Don't screw up the event mask when "managing" our own windows
-
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 15 Jul 2010 11:54:23 +0200
-
-mutter (2.31.2-3ubuntu1) maverick; urgency=low
-
-  * Merge from debian experimental, remaining changes:
+  [ Emilio Pozuelo Monfort ]
+  * New upstream release.
     + debian/control.in:
-      - Vcs-Bzr tag
-    - debian/patches/03_strict_focus.patch:
-      add a new focus mode META_FOCUS_MODE_STRICT
-      (/apps/metacity/general/focus_mode = strict)
-    - debian/patches/04_support_drag_drop_with_alt_tab.patch:
-      support alt-tab during drag and drop operation
-    - debian/patches/05_raise_on_click_for_click_mode.patch:
-      use raise on click option
-    + debian/patches/10_no-ws-switcher.patch:
-      Don't show ws selector when you only have one ws
-    + debian/patches/11_hide_tooltip_on_decorator.patch:
-      add a gconf key (/desktop/gnome/interface/hide_decorator_tooltip)
-      to disable tooltip in decorator bar. If key not present, show the
-      tooltip.
-    - debian/patches/13_better_support_for_button_layout.patch
-      Corrected support for buttons backgrounds with transparency
-    - debian/patches/14_wrong_colormap.patch:
-      Use correct colormap, causes crash with client side decorations.
-    - add debian/patches/15_detect_maximized_window.patch:
-      detect window's state
-    + debian/patches/91_add_window_groups.patch:
-      Adds support for a above, normal and below window groups, for more
-      control by plugins
-    + debian/rules:
-      use DEB_INSTALL_DOCS_mutter, not DEB_INSTALL_DOCS_metacity
+      - Update build dependencies.
+      - Remove unneeded libgtk2.0-dev build dependency.
+    + debian/patches/02_gdk_removed_macro.patch,
+      debian/patches/03_handle_new_gtk_states.patch,
+      debian/patches/04_fix_gradient_example.patch:
+      - Removed, included upstream.
+  * debian/libmutter-private0.symbols:
+    + Add a symbols file.
+  * debian/rules:
+    + Make the shlibs always depend on the latest upstream version.
+      We have symbols file anyway, and manually bumping the shver is
+      error prone.
 
- -- Didier Roche <didrocks@ubuntu.com>  Tue, 29 Jun 2010 11:44:19 +0200
+  [ Laurent Bigonville ]
+  * debian/control: Bump Standards-Version to 3.9.1
+
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Wed, 12 Jan 2011 23:06:20 +0000
+
+mutter (2.91.3-3) experimental; urgency=low
+
+  * debian/patches/02_gdk_removed_macro.patch,
+  * debian/patches/03_handle_new_gtk_states.patch,
+  * debian/patches/04_fix_gradient_example.patch:
+    - Patches from upstream git, fix the build with latest GTK+ 3.
+  * debian/control.in:
+    - Bump the libgtk3.0-dev build dependency accordingly.
+
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Sat, 18 Dec 2010 23:39:24 +0000
+
+mutter (2.91.3-2) experimental; urgency=low
+
+  * Update to the new gir policy:
+    - Rename gir1.0-mutter-2.91 to gir1.2-mutter-2.91.
+    - Bump the gobject-introspection build dependency.
+    - Build depend on gir1.2 packages.
+  * debian/control.in:
+    - Fix typo, s/shlib/shlibs/.
+  * debian/rules:
+    - Remove hack to get translations in /usr/share, no longer needed.
+    - Pass the path to the typelibs to dh_girepository to get correct
+      dependencies.
+  * debian/rules,
+    debian/control.in:
+    - Use dh-autoreconf.
+  * debian/patches/90_autotools.patch,
+    debian/patches/99_ltmain_as-needed.patch:
+    - Removed, no longer needed with dh-autoreconf.
+  * debian/rules,
+    debian/copyright:
+    - Fix some metacity leftovers.
+  * debian/mutter.1,
+    debian/mutter-message.1,
+    debian/mutter-theme-viewer.1,
+    debian/mutter-window-demo.1,
+    debian/mutter-common.manpages:
+    - Removed, shipped upstream.
+
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Tue, 14 Dec 2010 00:52:38 +0100
+
+mutter (2.91.3-1) experimental; urgency=low
+
+  [ Gustavo Noronha Silva ]
+  * New development release
+  * debian/control:
+  - update build-dependencies on GObject-Introspection packages
+  - build-depend on GTK+3
+
+  [ Emilio Pozuelo Monfort ]
+  * New upstream release.
+    - Rename gir1.0-mutter-2.31 to gir1.0-mutter-2.91.
+  * debian/control.in:
+    - Build depend on libjson-glib-dev and gir1.0-json-glib-1.0.
+  * debian/rules,
+    debian/control.in,
+    debian/source/format:
+    - Switch to source format 3.0 (quilt).
+  * debian/rules:
+    - Bump the shlib version.
+
+ -- Emilio Pozuelo Monfort <pochu@debian.org>  Mon, 06 Dec 2010 00:59:42 +0100
+
+mutter (2.31.5-1) experimental; urgency=low
+
+  * New upstream release
+  - refreshed patches
+  - added a hack to rules to work-around the build trying to install
+    locale files to /usr/lib/locale
+  - bumped shlib minimum version to 2.31.5 (see #586124)
+
+ -- Gustavo Noronha Silva <kov@debian.org>  Tue, 13 Jul 2010 11:36:29 -0300
 
 mutter (2.31.2-3) experimental; urgency=low
 
@@ -182,81 +100,6 @@ mutter (2.31.2-3) experimental; urgency=low
   - actually install the typelib file
 
  -- Gustavo Noronha Silva <kov@debian.org>  Mon, 31 May 2010 11:37:33 -0300
-
-mutter (2.31.2-2ubuntu6) maverick; urgency=low
-
-  * remove debian/patches/80_no_session_delay.patch:
-    finally was an evil idea to delay mutter from WindowManager to
-    Initialization phase. This create a lot of weird effects like
-    gnome-keyring race condition not putting most of the time
-    SSH_AUTH_SOCK to the right value (LP: #599506)
-
- -- Didier Roche <didrocks@ubuntu.com>  Mon, 28 Jun 2010 21:07:55 +0200
-
-mutter (2.31.2-2ubuntu5) maverick; urgency=low
-
-  * remove debian/patches/04_worspaces_default_name.patch:
-    - drop "Desk" term
-  * add debian/patches/04_support_drag_drop_with_alt_tab.patch:
-    - support alt-tab during drag and drop operation (LP: #11939)
-
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 24 Jun 2010 10:52:36 +0200
-
-mutter (2.31.2-2ubuntu4) maverick; urgency=low
-
-  * take some patches from metacity and adapt them to mutter:
-    - debian/patches/03_strict_focus.patch:
-      add a new focus mode META_FOCUS_MODE_STRICT
-      (/apps/metacity/general/focus_mode = strict)
-    - debian/patches/04_worspaces_default_name.patch
-      use "Desk" instead of "Workspace" for default workspaces naming.
-    - debian/patches/05_raise_on_click_for_click_mode.patch:
-      use raise on click option
-    - debian/patches/13_better_support_for_button_layout.patch
-      Corrected support for buttons backgrounds with transparency
-
- -- Didier Roche <didrocks@ubuntu.com>  Wed, 23 Jun 2010 22:03:53 +0200
-
-mutter (2.31.2-2ubuntu3) maverick; urgency=low
-
-  * add debian/patches/15_detect_maximized_window.patch:
-    - detect window's state (needed for unity)
-
- -- Didier Roche <didrocks@ubuntu.com>  Mon, 07 Jun 2010 16:20:38 +0200
-
-mutter (2.31.2-2ubuntu2) maverick; urgency=low
-
-  * debian/patches/14_wrong_colormap.patch:
-    - Use correct colormap, causes crash with client side decorations. Patch
-      from Fabien Tassin and Sarvatt
-
- -- Didier Roche <didrocks@ubuntu.com>  Thu, 03 Jun 2010 21:32:35 +0200
-
-mutter (2.31.2-2ubuntu1) maverick; urgency=low
-
-  * Merge from debian experimental, remaining changes:
-    + debian/control.in:
-      - Vcs-Bzr tag
-    + renamed debian/gir1.0-mutter-2.29.install to
-      debian/gir1.0-mutter-2.31.install as bin package name changed
-    + debian/patches/10_no-ws-switcher.patch:
-      Don't show ws selector when you only have one ws
-    + debian/patches/11_hide_tooltip_on_decorator.patch:
-      add a gconf key (/desktop/gnome/interface/hide_decorator_tooltip)
-      to disable tooltip in decorator bar. If key not present, show the
-      tooltip.
-    + debian/patches/80_no_session_delay.patch:
-      Start mutter as early as possible, since with plugins (such as
-      gnome-shell) it will take the longest time to start up; Let the
-      scheduler deal with squeezing the other processes into mutter's
-      idle periods.
-    + debian/patches/91_add_window_groups.patch:
-      Adds support for a above, normal and below window groups, for more 
-      control by plugins
-    + debian/rules:
-      use DEB_INSTALL_DOCS_mutter, not DEB_INSTALL_DOCS_metacity
-
- -- Didier Roche <didrocks@ubuntu.com>  Wed, 02 Jun 2010 17:26:33 +0200
 
 mutter (2.31.2-2) experimental; urgency=low
 
