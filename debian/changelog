@@ -1,3 +1,9 @@
+mutter (2.91.90-1ubuntu1) natty; urgency=low
+
+  * debian/patches/02_arm_include_clutter_x11.patch: Fix armel FTBFS.
+
+ -- Jani Monoses <jani@ubuntu.com>  Wed, 02 Mar 2011 15:43:27 +0200
+
 mutter (2.91.90-1) experimental; urgency=low
 
   * New upstream release.
