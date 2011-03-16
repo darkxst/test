@@ -1,2 +1,3 @@
 01_Wcast-align.patch
 02_arm_include_clutter_x11.patch
+03_link_gles2.patch

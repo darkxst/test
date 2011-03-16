@@ -238,7 +238,7 @@ Meta-$(api_version).typelib: $(G_IR_COMPILER) Meta-$(api_version).gir
 endif
 
 EFENCE=
-mutter_LDADD=@MUTTER_LIBS@ $(EFENCE) -lclutter-glx-1.0
+mutter_LDADD=@MUTTER_LIBS@ $(EFENCE)
 mutter_LDFLAGS=-export-dynamic
 
 mutter_theme_viewer_LDADD= @MUTTER_LIBS@ libmutter-private.la

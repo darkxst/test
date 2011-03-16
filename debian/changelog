@@ -1,3 +1,11 @@
+mutter (2.91.90-1ubuntu2) natty; urgency=low
+
+  * debian/patches/03_link_gles2.patch: Link to clutter-glx-1.0
+    explicitily at the end of link flags, to bring in libGLESv2 on armel.
+    Fixes FTBFS (LP:#726827)
+
+ -- Jani Monoses <jani@ubuntu.com>  Wed, 16 Mar 2011 13:30:03 +0200
+
 mutter (2.91.90-1ubuntu1) natty; urgency=low
 
   * debian/patches/02_arm_include_clutter_x11.patch: Fix armel FTBFS.
