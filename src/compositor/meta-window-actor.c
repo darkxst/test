@@ -374,6 +374,14 @@ window_decorated_notify (MetaWindow *mw,
 }
 
 static void
+window_appears_focused_notify (MetaWindow *mw,
+                               GParamSpec *arg1,
+                               gpointer    data)
+{
+  clutter_actor_queue_redraw (CLUTTER_ACTOR (data));
+}
+
+static void
 meta_window_actor_constructed (GObject *object)
 {
   MetaWindowActor        *self     = META_WINDOW_ACTOR (object);
@@ -422,6 +430,8 @@ meta_window_actor_constructed (GObject *object)
 
       g_signal_connect (priv->window, "notify::decorated",
                         G_CALLBACK (window_decorated_notify), self);
+      g_signal_connect (priv->window, "notify::appears-focused",
+                        G_CALLBACK (window_appears_focused_notify), self);
     }
   else
     {
@@ -497,6 +507,12 @@ meta_window_actor_dispose (GObject *object)
 
   info->windows = g_list_remove (info->windows, (gconstpointer) self);
 
+  if (priv->window)
+    {
+      g_object_unref (priv->window);
+      priv->window = NULL;
+    }
+
   /*
    * Release the extra reference we took on the actor.
    */
@@ -529,7 +545,11 @@ meta_window_actor_set_property (GObject      *object,
   switch (prop_id)
     {
     case PROP_META_WINDOW:
-      priv->window = g_value_get_object (value);
+      {
+        if (priv->window)
+          g_object_unref (priv->window);
+        priv->window = g_value_dup_object (value);
+      }
       break;
     case PROP_META_SCREEN:
       priv->screen = g_value_get_pointer (value);

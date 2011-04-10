@@ -36,7 +36,6 @@ gboolean meta_is_debugging (void);
 void     meta_set_debugging (gboolean setting);
 gboolean meta_is_syncing (void);
 void     meta_set_syncing (gboolean setting);
-gboolean meta_get_replace_current_wm (void);
 void     meta_set_replace_current_wm (gboolean setting);
 
 void meta_debug_spew_real (const char *format,
@@ -105,9 +104,9 @@ char* meta_g_utf8_strndup (const gchar *src, gsize n);
 void  meta_free_gslist_and_elements (GSList *list_to_deep_free);
 
 GPid meta_show_dialog (const char *type,
-                       const char *title,
                        const char *message,
-                       gint timeout,
+                       const char *timeout,
+                       const char *display,
                        const char *ok_text,
                        const char *cancel_text,
                        const int transient_for,
