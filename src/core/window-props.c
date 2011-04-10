@@ -40,10 +40,10 @@
 
 #include <config.h>
 #include "window-props.h"
-#include "errors.h"
+#include <meta/errors.h>
 #include "xprops.h"
-#include "frame-private.h"
-#include "group.h"
+#include "frame.h"
+#include <meta/group.h>
 #include <X11/Xatom.h>
 #include <unistd.h>
 #include <string.h>
@@ -684,7 +684,7 @@ reload_net_wm_state (MetaWindow    *window,
       else if (value->v.atom_list.atoms[i] == window->display->atom__NET_WM_STATE_DEMANDS_ATTENTION)
         window->wm_state_demands_attention = TRUE;
       else if (value->v.atom_list.atoms[i] == window->display->atom__NET_WM_STATE_STICKY)
-        window->on_all_workspaces = TRUE;
+        window->on_all_workspaces_requested = TRUE;
 
       ++i;
     }
@@ -693,6 +693,7 @@ reload_net_wm_state (MetaWindow    *window,
                 window->desc);
 
   meta_window_recalc_window_type (window);
+  meta_window_recalc_features (window);
 }
 
 static void
@@ -1465,6 +1466,9 @@ reload_transient_for (MetaWindow    *window,
                       MetaPropValue *value,
                       gboolean       initial)
 {
+  if (window->has_focus && window->xtransient_for != None)
+    meta_window_propagate_focus_appearance (window, FALSE);
+
   window->xtransient_for = None;
   
   if (value->type != META_PROP_VALUE_INVALID)
@@ -1508,6 +1512,9 @@ reload_transient_for (MetaWindow    *window,
 
   if (!window->constructing && !window->override_redirect)
     meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
+
+  if (window->has_focus && window->xtransient_for != None)
+    meta_window_propagate_focus_appearance (window, TRUE);
 }
 
 /**

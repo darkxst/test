@@ -1,29 +1,48 @@
-## Description: add some description
-## Origin/Author: add some origin or author
-## Bug: bug URL
-Index: mutter-2.91.90/src/Makefile.am
+## Description: Mutter is using a GL symbol (glGetBooleanv) and not explicit linking to it.
+##  The symbols is available in libGL and libGLESv2
+## Origin/Author: Jani Monoses
+## Bug: https://bugs.launchpad.net/ubuntu/+source/mutter/+bug/726827
+Index: mutter-2.91.92/src/Makefile.am
 ===================================================================
---- mutter-2.91.90.orig/src/Makefile.am	2011-03-16 13:30:00.254615402 +0200
-+++ mutter-2.91.90/src/Makefile.am	2011-03-16 13:29:53.418581504 +0200
-@@ -238,7 +238,7 @@
- endif
+--- mutter-2.91.92.orig/src/Makefile.am
++++ mutter-2.91.92/src/Makefile.am
+@@ -155,7 +155,7 @@
+ 	$(mutter_built_sources)
  
- EFENCE=
--mutter_LDADD=@MUTTER_LIBS@ $(EFENCE)
-+mutter_LDADD=@MUTTER_LIBS@ $(EFENCE) -lclutter-glx-1.0
- mutter_LDFLAGS=-export-dynamic
+ libmutter_la_LDFLAGS = -no-undefined
+-libmutter_la_LIBADD  = $(MUTTER_LIBS)
++libmutter_la_LIBADD  = $(MUTTER_LIBS) -lclutter-glx-1.0
  
- mutter_theme_viewer_LDADD= @MUTTER_LIBS@ libmutter-private.la
-Index: mutter-2.91.90/src/Makefile.in
+ # Headers installed for plugins; introspected information will
+ # be extracted into Mutter-<version>.gir
+@@ -199,7 +199,7 @@
+ bin_PROGRAMS=mutter mutter-theme-viewer
+ 
+ mutter_SOURCES = core/mutter.c
+-mutter_LDADD = $(MUTTER_LIBS) libmutter.la
++mutter_LDADD = $(MUTTER_LIBS) libmutter.la -lclutter-glx-1.0
+ 
+ if HAVE_INTROSPECTION
+ include $(INTROSPECTION_MAKEFILE)
+Index: mutter-2.91.92/src/Makefile.in
 ===================================================================
---- mutter-2.91.90.orig/src/Makefile.in	2011-03-16 13:30:00.434616293 +0200
-+++ mutter-2.91.90/src/Makefile.in	2011-03-16 13:29:52.778578327 +0200
-@@ -610,7 +610,7 @@
- @WITH_INTROSPECTION_TRUE@typelibdir = $(pkglibdir)
- @WITH_INTROSPECTION_TRUE@typelib_DATA = Meta-$(api_version).typelib
- EFENCE = 
--mutter_LDADD = @MUTTER_LIBS@ $(EFENCE)
-+mutter_LDADD = @MUTTER_LIBS@ $(EFENCE) -lclutter-glx-1.0
- mutter_LDFLAGS = -export-dynamic
- mutter_theme_viewer_LDADD = @MUTTER_LIBS@ libmutter-private.la
- testboxes_SOURCES = include/util.h core/util.c include/boxes.h core/boxes.c core/testboxes.c
+--- mutter-2.91.92.orig/src/Makefile.in
++++ mutter-2.91.92/src/Makefile.in
+@@ -546,7 +546,7 @@
+ 	$(mutter_built_sources)
+ 
+ libmutter_la_LDFLAGS = -no-undefined
+-libmutter_la_LIBADD = $(MUTTER_LIBS)
++libmutter_la_LIBADD = $(MUTTER_LIBS) -lclutter-glx-1.0
+ 
+ # Headers installed for plugins; introspected information will
+ # be extracted into Mutter-<version>.gir
+@@ -588,7 +588,7 @@
+ 	ui/theme-viewer.c
+ 
+ mutter_SOURCES = core/mutter.c
+-mutter_LDADD = $(MUTTER_LIBS) libmutter.la
++mutter_LDADD = $(MUTTER_LIBS) libmutter.la -lclutter-glx-1.0
+ @HAVE_INTROSPECTION_TRUE@api_version = $(MUTTER_MAJOR_VERSION).$(MUTTER_MINOR_VERSION)
+ 
+ # These files are in package-private directories, even though they may be used

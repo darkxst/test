@@ -4,19 +4,19 @@
 
 #include <clutter/x11/clutter-x11.h>
 
-#include "screen.h"
-#include "errors.h"
-#include "window.h"
+#include <meta/screen.h>
+#include <meta/errors.h>
+#include <meta/window.h>
 #include "compositor-private.h"
-#include "compositor-mutter.h"
+#include <meta/compositor-mutter.h>
 #include "xprops.h"
-#include "prefs.h"
-#include "meta-shadow-factory.h"
+#include <meta/prefs.h>
+#include <meta/meta-shadow-factory.h>
 #include "meta-window-actor-private.h"
 #include "meta-window-group.h"
 #include "meta-background-actor.h"
-#include "../core/window-private.h" /* to check window->hidden */
-#include "../core/display-private.h" /* for meta_display_lookup_x_window() */
+#include "window-private.h" /* to check window->hidden */
+#include "display-private.h" /* for meta_display_lookup_x_window() */
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xcomposite.h>
 
@@ -550,18 +550,7 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
 
   info->plugin_mgr =
     meta_plugin_manager_get (screen);
-
-  if (info->plugin_mgr != meta_plugin_manager_get_default ())
-    {
-      /* The default plugin manager has been initialized during
-       * global preferences load.
-       */
-      if (!meta_plugin_manager_load (info->plugin_mgr))
-        g_critical ("failed to load plugins");
-    }
-
-  if (!meta_plugin_manager_initialize (info->plugin_mgr))
-    g_critical ("failed to initialize plugins");
+  meta_plugin_manager_initialize (info->plugin_mgr);
 
   /*
    * Delay the creation of the overlay window as long as we can, to avoid
@@ -1197,4 +1186,48 @@ meta_get_overlay_window (MetaScreen *screen)
   MetaCompScreen *info = meta_screen_get_compositor_data (screen);
 
   return info->output;
+}
+
+#define FLASH_TIME_MS 50
+
+static void
+flash_out_completed (ClutterAnimation *animation,
+                     ClutterActor     *flash)
+{
+  clutter_actor_destroy (flash);
+}
+
+static void
+flash_in_completed (ClutterAnimation *animation,
+                    ClutterActor     *flash)
+{
+  clutter_actor_animate (flash, CLUTTER_EASE_IN_QUAD,
+                         FLASH_TIME_MS,
+                         "opacity", 0,
+                         "signal-after::completed", flash_out_completed, flash,
+                         NULL);
+}
+
+void
+meta_compositor_flash_screen (MetaCompositor *compositor,
+                              MetaScreen     *screen)
+{
+  ClutterActor *stage;
+  ClutterActor *flash;
+  ClutterColor black = { 0, 0, 0, 255 };
+  gfloat width, height;
+
+  stage = meta_get_stage_for_screen (screen);
+  clutter_actor_get_size (stage, &width, &height);
+
+  flash = clutter_rectangle_new_with_color (&black);
+  clutter_actor_set_size (flash, width, height);
+  clutter_actor_set_opacity (flash, 0);
+  clutter_container_add_actor (CLUTTER_CONTAINER (stage), flash);
+
+  clutter_actor_animate (flash, CLUTTER_EASE_OUT_QUAD,
+                         FLASH_TIME_MS,
+                         "opacity", 192,
+                         "signal-after::completed", flash_in_completed, flash,
+                         NULL);
 }

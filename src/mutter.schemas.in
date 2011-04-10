@@ -23,21 +23,6 @@
     </schema>
 
     <schema>
-      <key>/schemas/apps/mutter/general/clutter_plugins</key>
-      <applyto>/apps/mutter/general/clutter_plugins</applyto>
-      <owner>mutter</owner>
-      <type>list</type>
-      <list_type>string</list_type>
-      <default>[default]</default>
-      <locale name="C">
-        <short>Clutter Plugins</short>
-        <long>
-          Plugins to load for the Clutter-based compositing manager.
-        </long>
-      </locale>
-    </schema>
-
-    <schema>
       <key>/schemas/apps/mutter/general/attach_modal_dialogs</key>
       <applyto>/apps/mutter/general/attach_modal_dialogs</applyto>
       <owner>mutter</owner>
@@ -68,5 +53,20 @@
         </long>
       </locale>
     </schema>
-  </schemalist>  
+
+    <schema>
+      <key>/schemas/apps/mutter/general/workspaces_only_on_primary</key>
+      <applyto>/apps/mutter/general/workspaces_only_on_primary</applyto>
+      <owner>mutter</owner>
+      <type>bool</type>
+      <default>false</default>
+      <locale name="C">
+        <short>Workspaces only on primary</short>
+        <long>
+          Determines whether workspace switching should happen for windows
+	  on all monitors or only for windows on the primary monitor.
+        </long>
+      </locale>
+    </schema>
+    </schemalist>
 </gconfschemafile>

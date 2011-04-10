@@ -24,10 +24,10 @@
  */
 
 #include <config.h>
-#include "prefs.h"
+#include <meta/prefs.h>
 #include "ui.h"
-#include "util.h"
-#include "compositor/meta-plugin-manager.h"
+#include <meta/util.h>
+#include "meta-plugin-manager.h"
 #ifdef HAVE_GCONF
 #include <gconf/gconf-client.h>
 #endif
@@ -66,9 +66,8 @@
 #define KEY_WORKSPACE_NAME_DIRECTORY "/apps/metacity/workspace_names"
 #define KEY_WORKSPACE_NAME_PREFIX "/apps/metacity/workspace_names/name_"
 
-#define KEY_CLUTTER_PLUGINS  "/apps/mutter/general/clutter_plugins"
-
 #define KEY_LIVE_HIDDEN_WINDOWS "/apps/mutter/general/live_hidden_windows"
+#define KEY_WORKSPACES_ONLY_ON_PRIMARY "/apps/mutter/general/workspaces_only_on_primary"
 
 #define KEY_NO_TAB_POPUP "/apps/metacity/general/no_tab_popup"
 
@@ -115,10 +114,8 @@ static char *terminal_command = NULL;
 
 static char *workspace_names[MAX_REASONABLE_WORKSPACES] = { NULL, };
 
-static gboolean clutter_plugins_overridden = FALSE;
-static GSList *clutter_plugins = NULL;
-
 static gboolean live_hidden_windows = FALSE;
+static gboolean workspaces_only_on_primary = FALSE;
 
 static gboolean no_tab_popup = FALSE;
 
@@ -424,6 +421,11 @@ static MetaBoolPreference preferences_bool[] =
     { "/apps/mutter/general/live_hidden_windows",
       META_PREF_LIVE_HIDDEN_WINDOWS,
       &live_hidden_windows,
+      FALSE,
+    },
+    { "/apps/mutter/general/workspaces_only_on_primary",
+      META_PREF_WORKSPACES_ONLY_ON_PRIMARY,
+      &workspaces_only_on_primary,
       FALSE,
     },
     { "/apps/metacity/general/no_tab_popup",
@@ -1051,7 +1053,6 @@ meta_prefs_init (void)
 #ifdef HAVE_GCONF
   GError *err = NULL;
   gchar **gconf_dir_cursor;
-  MetaPluginManager *plugin_manager;
   
   if (default_client != NULL)
     return;
@@ -1069,19 +1070,6 @@ meta_prefs_init (void)
                             &err);
       cleanup_error (&err);
     }
-
-  /* The plugin list is special and needs to be handled first */
-
-  if (!clutter_plugins_overridden)
-    clutter_plugins = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
-                                             GCONF_VALUE_STRING, &err);
-
-  cleanup_error (&err);
-
-  /* We now initialize plugins so that they can override any preference locations */
-
-  plugin_manager = meta_plugin_manager_get_default ();
-  meta_plugin_manager_load (plugin_manager);
 
   /* Pick up initial values. */
 
@@ -1395,23 +1383,6 @@ change_notify (GConfClient    *client,
   else if (g_str_equal (key, KEY_OVERLAY_KEY))
     {
       queue_changed (META_PREF_KEYBINDINGS);
-    }
-  else if (g_str_equal (key, KEY_CLUTTER_PLUGINS) && !clutter_plugins_overridden)
-    {
-      GError *err = NULL;
-      GSList *l;
-
-      l = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
-                                 GCONF_VALUE_STRING, &err);
-
-      if (!l)
-        {
-          cleanup_error (&err);
-          goto out;
-        }
-
-      clutter_plugins = l;
-      queue_changed (META_PREF_CLUTTER_PLUGINS);
     }
   else
     {
@@ -2006,11 +1977,11 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_FORCE_FULLSCREEN:
       return "FORCE_FULLSCREEN";
 
-    case META_PREF_CLUTTER_PLUGINS:
-      return "CLUTTER_PLUGINS";
-
     case META_PREF_LIVE_HIDDEN_WINDOWS:
       return "LIVE_HIDDEN_WINDOWS";
+
+    case META_PREF_WORKSPACES_ONLY_ON_PRIMARY:
+      return "WORKSPACES_ONLY_ON_PRIMARY";
 
     case META_PREF_NO_TAB_POPUP:
       return "NO_TAB_POPUP";
@@ -3000,52 +2971,6 @@ meta_prefs_get_force_fullscreen (void)
   return force_fullscreen;
 }
 
-/**
- * meta_prefs_get_clutter_plugins:
- *
- * Returns: (transfer none) (element-type utf8): Plugin names to load
- */
-GSList *
-meta_prefs_get_clutter_plugins (void)
-{
-  return clutter_plugins;
-}
-
-void
-meta_prefs_set_clutter_plugins (GSList *list)
-{
-#ifdef HAVE_GCONF
-  GError *err = NULL;
-
-  gconf_client_set_list (default_client,
-                         KEY_CLUTTER_PLUGINS,
-                         GCONF_VALUE_STRING,
-                         list,
-                         &err);
-
-  if (err)
-    {
-      meta_warning (_("Error setting clutter plugin list: %s\n"),
-                    err->message);
-      g_error_free (err);
-    }
-#endif
-}
-
-void
-meta_prefs_override_clutter_plugins (GSList *list)
-{
-  GSList *l;
-
-  clutter_plugins_overridden = TRUE;
-  clutter_plugins = NULL;
-
-  for (l = list; l; l = l->next)
-    clutter_plugins = g_slist_prepend (clutter_plugins, g_strdup(l->data));
-
-  clutter_plugins = g_slist_reverse (clutter_plugins);
-}
-
 gboolean
 meta_prefs_get_live_hidden_windows (void)
 {
@@ -3079,6 +3004,13 @@ meta_prefs_set_live_hidden_windows (gboolean whether)
 }
 
 gboolean
+meta_prefs_get_workspaces_only_on_primary (void)
+{
+  return workspaces_only_on_primary;
+}
+
+
+gboolean
 meta_prefs_get_no_tab_popup (void)
 {
   return no_tab_popup;
@@ -3104,12 +3036,6 @@ meta_prefs_set_no_tab_popup (gboolean whether)
 #else
   no_tab_popup = whether;
 #endif
-}
-
-void
-meta_prefs_override_no_tab_popup (gboolean whether)
-{
-  no_tab_popup = whether;
 }
 
 #ifndef HAVE_GCONF

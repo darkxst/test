@@ -27,7 +27,7 @@
  */
 
 #include "boxes-private.h"
-#include "util.h"
+#include <meta/util.h>
 #include <X11/Xutil.h>  /* Just for the definition of the various gravities */
 
 /* It would make sense to use GSlice here, but until we clean up the
@@ -179,6 +179,16 @@ meta_rectangle_area (const MetaRectangle *rect)
   return rect->width * rect->height;
 }
 
+/**
+ * meta_rectangle_intersect:
+ * @src1: a #MetaRectangle
+ * @src2: another #MetaRectangle
+ * @dest: (out caller-allocates): an empty #MetaRectangle, to be filled
+ *   with the coordinates of the intersection.
+ *
+ * Returns: TRUE is some intersection exists and is not degenerate, FALSE
+ *   otherwise.
+ */
 gboolean
 meta_rectangle_intersect (const MetaRectangle *src1,
 			  const MetaRectangle *src2,
@@ -226,6 +236,13 @@ meta_rectangle_equal (const MetaRectangle *src1,
           (src1->height == src2->height));
 }
 
+/**
+ * meta_rectangle_union:
+ * @rect1: a #MetaRectangle
+ * @rect2: another #MetaRectangle
+ * @dest: (out caller-allocates): an empty #MetaRectangle, to be filled
+ *   with the coordinates of the bounding box.
+ */
 void
 meta_rectangle_union (const MetaRectangle *rect1,
                       const MetaRectangle *rect2,

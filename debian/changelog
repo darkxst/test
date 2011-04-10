@@ -1,3 +1,56 @@
+mutter (3.0.0-0ubuntu1) natty; urgency=low
+
+  * New upstream release
+
+  * Merge with debian experimental (LP: #742458), remaining changes:
+    + debian/patches/03_link_gles2.patch: Link to clutter-glx-1.0
+      explicitily at the end of link flags, to bring in libGLESv2 on armel.
+  * debian/control.in:
+    + rename gir package to gir1.2-mutter-3.0
+  * debian/libmutter0.symbols:
+    + updated
+  * debian/patches:
+    + fix 03_link_gles2.patch 
+
+ -- Rico Tzschichholz <ricotz@ubuntu.com>  Sun, 10 Apr 2011 22:27:59 -0500
+
+mutter (2.91.92-1) experimental; urgency=low
+
+  * New upstream release
+
+  [ Rico Tzschichholz ]
+  * debian/patches:
+    + drop 02_arm_include_clutter_x11.patch, is upstream
+    + drop 10_mutter-ldflags.patch, is upstream
+  * debian/control.in,debian/rules:
+    + add libmutter0 which replaces libmutter-wm0 and libmutter-private0
+
+  [ Frederic Peters ]
+  * debian/control.in: mention gnome-shell in libmutter0 package description.
+
+ -- Frederic Peters <fpeters@debian.org>  Thu, 24 Mar 2011 19:56:48 +0100
+
+mutter (2.91.91-1) experimental; urgency=low
+
+  * New upstream release.
+
+  [Laurent Bigonville]
+  * debian/control.in: Add Vcs-Svn and Vcs-Browser fields
+
+  [Frederic Peters]
+  * debian/control.in, libmutter-wm0.install, libmutter-wm0.symbols:
+    Add a libmutter-wm0 library
+  * debian/patches/10_mutter-ldflags.patch: Fix linking of mutter binary
+  * debian/patches/20_libmutter_export_symbols.patch: Limit list of symbols
+    exported by libmutter-{wm,private} (but don't add it to series as it makes
+    gnome-shell segfault)
+  * debian/mutter.install, debian/mutter-common.install: move mutter-wm.desktop
+    from mutter-common to mutter.
+  * debian/control.in: add replaces/breaks in mutter, against previous
+    versions of mutter-common, for the move of mutter-wm.desktop.
+
+ -- Frederic Peters <fpeters@debian.org>  Mon, 14 Mar 2011 19:09:58 +0100
+
 mutter (2.91.90-1ubuntu2) natty; urgency=low
 
   * debian/patches/03_link_gles2.patch: Link to clutter-glx-1.0
