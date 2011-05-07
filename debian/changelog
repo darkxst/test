@@ -1,3 +1,42 @@
+mutter (3.0.1-1ubuntu1) oneiric; urgency=low
+
+  * Merge with debian experimental, remaining changes:
+    + debian/patches/03_link_gles2.patch: Link to clutter-glx-1.0
+      explicitily at the end of link flags, to bring in libGLESv2 on armel.
+
+ -- Laurent Bigonville <bigon@ubuntu.com>  Sat, 07 May 2011 00:13:47 +0200
+
+mutter (3.0.1-1) experimental; urgency=low
+
+  * New upstream release (3.0.0).
+  * debian/control.in:
+    - Bump Standards-Version to 3.9.2 (no further changes)
+    - Drop versionized dpkg-dev build-dependency
+
+ -- Laurent Bigonville <bigon@debian.org>  Fri, 06 May 2011 23:47:25 +0200
+
+mutter (3.0.0-2) experimental; urgency=low
+
+  * Rename gir1.2-mutter-2.91 package to gir1.2-mutter-3.0
+
+ -- Laurent Bigonville <bigon@debian.org>  Mon, 11 Apr 2011 11:19:27 +0200
+
+mutter (3.0.0-1) experimental; urgency=low
+
+  * Team upload.
+
+  [ Frederic Peters ]
+  * New upstream release (2.91.93).
+  * debian/libmutter0.symbols: new symbol.
+
+  [ Josselin Mouette ]
+  * Make the -dev package depend on the gir package.
+
+  [ Raphaël Hertzog ]
+  * New upstream release (3.0.0).
+
+ -- Raphaël Hertzog <hertzog@debian.org>  Sun, 10 Apr 2011 19:38:04 +0000
+
 mutter (3.0.0-0ubuntu1) natty; urgency=low
 
   * New upstream release
@@ -10,7 +49,7 @@ mutter (3.0.0-0ubuntu1) natty; urgency=low
   * debian/libmutter0.symbols:
     + updated
   * debian/patches:
-    + fix 03_link_gles2.patch 
+    + fix 03_link_gles2.patch
 
  -- Rico Tzschichholz <ricotz@ubuntu.com>  Sun, 10 Apr 2011 22:27:59 -0500
 
