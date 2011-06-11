@@ -26,8 +26,8 @@
 
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
-#include "common.h"
-#include "theme.h"
+#include <meta/common.h>
+#include "theme-private.h"
 
 typedef enum
 {
@@ -75,7 +75,7 @@ struct _MetaUIFrame
 {
   Window xwindow;
   GdkWindow *window;
-  GtkStyle *style;
+  GtkStyleContext *style;
   MetaFrameStyle *cache_style;
   PangoLayout *layout;
   int text_height;

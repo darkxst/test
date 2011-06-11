@@ -22,16 +22,16 @@
  * 02111-1307, USA.
  */
 
-#define _GNU_SOURCE
-#define _SVID_SOURCE /* for gethostname() */
+#define _XOPEN_SOURCE /* for kill() */
 
 #include <config.h>
-#include "util.h"
+#include <meta/util.h>
 #include "window-private.h"
-#include "errors.h"
-#include "workspace.h"
+#include <meta/errors.h>
+#include <meta/workspace.h>
 
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
@@ -103,8 +103,8 @@ delete_ping_timeout_func (MetaDisplay *display,
 
   dialog_pid =
     meta_show_dialog ("--question",
-                      window_content, 0,
-                      window->screen->number,
+                      window_content, NULL,
+                      window->screen->screen_name,
                       _("_Wait"), _("_Force Quit"), window->xwindow,
                       NULL, NULL);
 
@@ -136,7 +136,7 @@ meta_window_delete (MetaWindow  *window,
                   window->desc);
       XKillClient (window->display->xdisplay, window->xwindow);
     }
-  meta_error_trap_pop (window->display, FALSE);
+  meta_error_trap_pop (window->display);
 
   meta_display_ping_window (window->display,
                             window,
@@ -178,42 +178,29 @@ meta_window_delete (MetaWindow  *window,
 void
 meta_window_kill (MetaWindow *window)
 {
-  char buf[257];
-  
   meta_topic (META_DEBUG_WINDOW_OPS,
               "Killing %s brutally\n",
               window->desc);
 
-  if (window->wm_client_machine != NULL &&
+  if (!meta_window_is_remote (window) &&
       window->net_wm_pid > 0)
     {
-      if (gethostname (buf, sizeof(buf)-1) == 0)
-        {
-          if (strcmp (buf, window->wm_client_machine) == 0)
-            {
-              meta_topic (META_DEBUG_WINDOW_OPS,
-                          "Killing %s with kill()\n",
-                          window->desc);
+      meta_topic (META_DEBUG_WINDOW_OPS,
+                  "Killing %s with kill()\n",
+                  window->desc);
 
-              if (kill (window->net_wm_pid, 9) < 0)
-                meta_topic (META_DEBUG_WINDOW_OPS,
-                            "Failed to signal %s: %s\n",
-                            window->desc, strerror (errno));
-            }
-        }
-      else
-        {
-          meta_warning (_("Failed to get hostname: %s\n"),
-                        strerror (errno));
-        }
+      if (kill (window->net_wm_pid, 9) < 0)
+        meta_topic (META_DEBUG_WINDOW_OPS,
+                    "Failed to signal %s: %s\n",
+                    window->desc, strerror (errno));
     }
-  
+
   meta_topic (META_DEBUG_WINDOW_OPS,
               "Disconnecting %s with XKillClient()\n",
               window->desc);
   meta_error_trap_push (window->display);
   XKillClient (window->display->xdisplay, window->xwindow);
-  meta_error_trap_pop (window->display, FALSE);
+  meta_error_trap_pop (window->display);
 }
 
 void

@@ -23,16 +23,17 @@
     </schema>
 
     <schema>
-      <key>/schemas/apps/mutter/general/clutter_plugins</key>
-      <applyto>/apps/mutter/general/clutter_plugins</applyto>
+      <key>/schemas/apps/mutter/general/attach_modal_dialogs</key>
+      <applyto>/apps/mutter/general/attach_modal_dialogs</applyto>
       <owner>mutter</owner>
-      <type>list</type>
-      <list_type>string</list_type>
-      <default>[default]</default>
+      <type>bool</type>
+      <default>false</default>
       <locale name="C">
-        <short>Clutter Plugins</short>
+        <short>Attach modal dialogs</short>
         <long>
-          Plugins to load for the Clutter-based compositing manager.
+          When true, instead
+          of having independent titlebars, modal dialogs appear attached to the titlebar
+          of the parent window and are moved together with the parent window.
         </long>
       </locale>
     </schema>
@@ -52,5 +53,20 @@
         </long>
       </locale>
     </schema>
-  </schemalist>  
+
+    <schema>
+      <key>/schemas/apps/mutter/general/workspaces_only_on_primary</key>
+      <applyto>/apps/mutter/general/workspaces_only_on_primary</applyto>
+      <owner>mutter</owner>
+      <type>bool</type>
+      <default>false</default>
+      <locale name="C">
+        <short>Workspaces only on primary</short>
+        <long>
+          Determines whether workspace switching should happen for windows
+	  on all monitors or only for windows on the primary monitor.
+        </long>
+      </locale>
+    </schema>
+    </schemalist>
 </gconfschemafile>

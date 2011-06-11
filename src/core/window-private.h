@@ -35,19 +35,16 @@
 #define META_WINDOW_PRIVATE_H
 
 #include <config.h>
-#include "compositor.h"
-#include "window.h"
+#include <meta/compositor.h>
+#include <meta/window.h>
 #include "screen-private.h"
-#include "util.h"
+#include <meta/util.h>
 #include "stack.h"
 #include "iconcache.h"
 #include <X11/Xutil.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
 typedef struct _MetaWindowQueue MetaWindowQueue;
-
-typedef gboolean (*MetaWindowForeachFunc) (MetaWindow *window,
-                                           void       *data);
 
 typedef enum {
   META_CLIENT_TYPE_UNKNOWN = 0,
@@ -70,6 +67,7 @@ struct _MetaWindow
   
   MetaDisplay *display;
   MetaScreen *screen;
+  const MetaMonitorInfo *monitor;
   MetaWorkspace *workspace;
   Window xwindow;
   /* may be NULL! not all windows get decorated */
@@ -99,6 +97,7 @@ struct _MetaWindow
   char *sm_client_id;
   char *wm_client_machine;
   char *startup_id;
+  char *mutter_hints;
 
   int net_wm_pid;
   
@@ -123,6 +122,11 @@ struct _MetaWindow
   guint maximize_horizontally_after_placement : 1;
   guint maximize_vertically_after_placement : 1;
   guint minimize_after_placement : 1;
+
+  /* The current or requested tile mode. If maximized_vertically is true,
+   * this is the current mode. If not, it is the mode which will be
+   * requested after the window grab is released */
+  guint tile_mode : 2;
 
   /* Whether we're shaded */
   guint shaded : 1;
@@ -156,6 +160,11 @@ struct _MetaWindow
    * have no stupid viewports)
    */
   guint on_all_workspaces : 1;
+
+  /* This is true if the client requested sticky, and implies on_all_workspaces == TRUE,
+   * however on_all_workspaces can be set TRUE for other internal reasons too, such as
+   * being override_redirect or being on the non-primary monitor. */
+  guint on_all_workspaces_requested : 1;
 
   /* Minimize is the state controlled by the minimize button */
   guint minimized : 1;
@@ -244,11 +253,9 @@ struct _MetaWindow
   /* EWHH demands attention flag */
   guint wm_state_demands_attention : 1;
   
-  /* this flag tracks receipt of focus_in focus_out and
-   * determines whether we draw the focus
-   */
+  /* this flag tracks receipt of focus_in focus_out */
   guint has_focus : 1;
-  
+
   /* Have we placed this window? */
   guint placed : 1;
 
@@ -380,6 +387,9 @@ struct _MetaWindow
   MetaGroup *group;
 
   GObject *compositor_private;
+
+  /* Focused window that is (directly or indirectly) attached to this one */
+  MetaWindow *attached_focus_window;
 };
 
 struct _MetaWindowClass
@@ -400,8 +410,15 @@ struct _MetaWindowClass
                                         (w)->maximized_vertically)
 #define META_WINDOW_MAXIMIZED_VERTICALLY(w)    ((w)->maximized_vertically)
 #define META_WINDOW_MAXIMIZED_HORIZONTALLY(w)  ((w)->maximized_horizontally)
+#define META_WINDOW_TILED_SIDE_BY_SIDE(w)      ((w)->maximized_vertically && \
+                                                !(w)->maximized_horizontally && \
+                                                 (w)->tile_mode != META_TILE_NONE)
+#define META_WINDOW_TILED_LEFT(w)     (META_WINDOW_TILED_SIDE_BY_SIDE(w) && \
+                                       (w)->tile_mode == META_TILE_LEFT)
+#define META_WINDOW_TILED_RIGHT(w)    (META_WINDOW_TILED_SIDE_BY_SIDE(w) && \
+                                       (w)->tile_mode == META_TILE_RIGHT)
 #define META_WINDOW_ALLOWS_MOVE(w)     ((w)->has_move_func && !(w)->fullscreen)
-#define META_WINDOW_ALLOWS_RESIZE_EXCEPT_HINTS(w)   ((w)->has_resize_func && !META_WINDOW_MAXIMIZED (w) && !(w)->fullscreen && !(w)->shaded)
+#define META_WINDOW_ALLOWS_RESIZE_EXCEPT_HINTS(w)   ((w)->has_resize_func && !META_WINDOW_MAXIMIZED (w) && !META_WINDOW_TILED_SIDE_BY_SIDE(w) && !(w)->fullscreen && !(w)->shaded)
 #define META_WINDOW_ALLOWS_RESIZE(w)   (META_WINDOW_ALLOWS_RESIZE_EXCEPT_HINTS (w) &&                \
                                         (((w)->size_hints.min_width < (w)->size_hints.max_width) ||  \
                                          ((w)->size_hints.min_height < (w)->size_hints.max_height)))
@@ -421,9 +438,15 @@ void        meta_window_unmanage           (MetaWindow  *window,
 void        meta_window_calc_showing       (MetaWindow  *window);
 void        meta_window_queue              (MetaWindow  *window,
                                             guint queuebits);
+void        meta_window_tile               (MetaWindow        *window);
 void        meta_window_maximize_internal  (MetaWindow        *window,
                                             MetaMaximizeFlags  directions,
                                             MetaRectangle     *saved_rect);
+void        meta_window_unmaximize_with_gravity (MetaWindow        *window,
+                                                 MetaMaximizeFlags  directions,
+                                                 int                new_width,
+                                                 int                new_height,
+                                                 int                gravity);
 void        meta_window_make_above         (MetaWindow  *window);
 void        meta_window_unmake_above       (MetaWindow  *window);
 void        meta_window_shade              (MetaWindow  *window,
@@ -506,8 +529,6 @@ void        meta_window_get_geometry         (MetaWindow  *window,
 void        meta_window_kill               (MetaWindow  *window);
 void        meta_window_focus              (MetaWindow  *window,
                                             guint32      timestamp);
-void        meta_window_raise              (MetaWindow  *window);
-void        meta_window_lower              (MetaWindow  *window);
 
 void        meta_window_update_unfocused_button_grabs (MetaWindow *window);
 
@@ -565,6 +586,9 @@ void meta_window_get_work_area_for_monitor     (MetaWindow    *window,
 void meta_window_get_work_area_all_monitors    (MetaWindow    *window,
                                                 MetaRectangle *area);
 
+void meta_window_get_current_tile_area         (MetaWindow    *window,
+                                                MetaRectangle *tile_area);
+
 
 gboolean meta_window_same_application (MetaWindow *window,
                                        MetaWindow *other_window);
@@ -582,12 +606,6 @@ void meta_window_refresh_resize_popup (MetaWindow *window);
 
 void meta_window_free_delete_dialog (MetaWindow *window);
 
-void     meta_window_foreach_transient        (MetaWindow            *window,
-                                               MetaWindowForeachFunc  func,
-                                               void                  *data);
-void     meta_window_foreach_ancestor         (MetaWindow            *window,
-                                               MetaWindowForeachFunc  func,
-                                               void                  *data);
 
 void meta_window_begin_grab_op (MetaWindow *window,
                                 MetaGrabOp  op,
@@ -610,13 +628,14 @@ void meta_window_stack_just_below (MetaWindow *window,
 void meta_window_set_user_time (MetaWindow *window,
                                 guint32     timestamp);
 
-void meta_window_set_demands_attention (MetaWindow *window);
-
-void meta_window_unset_demands_attention (MetaWindow *window);
-
 void meta_window_update_icon_now (MetaWindow *window);
 
 void meta_window_update_role (MetaWindow *window);
 void meta_window_update_net_wm_type (MetaWindow *window);
+void meta_window_update_monitor (MetaWindow *window);
+void meta_window_update_on_all_workspaces (MetaWindow *window);
+
+void meta_window_propagate_focus_appearance (MetaWindow *window,
+                                             gboolean    focused);
 
 #endif

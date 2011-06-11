@@ -26,9 +26,38 @@
  * 02111-1307, USA.
  */
 
-#include "boxes.h"
-#include "util.h"
+#include "boxes-private.h"
+#include <meta/util.h>
 #include <X11/Xutil.h>  /* Just for the definition of the various gravities */
+
+/* It would make sense to use GSlice here, but until we clean up the
+ * rest of this file and the internal API to use these functions, we
+ * leave it using g_malloc()/g_free() for consistency.
+ */
+
+MetaRectangle *
+meta_rectangle_copy (const MetaRectangle *rect)
+{
+  return g_memdup (rect, sizeof (MetaRectangle));
+}
+
+void
+meta_rectangle_free (MetaRectangle *rect)
+{
+  g_free (rect);
+}
+
+GType
+meta_rectangle_get_type (void)
+{
+  static GType type_id = 0;
+
+  if (!type_id)
+    type_id = g_boxed_type_register_static (g_intern_static_string ("MetaRectangle"),
+					    (GBoxedCopyFunc) meta_rectangle_copy,
+					    (GBoxedFreeFunc) meta_rectangle_free);
+  return type_id;
+}
 
 char*
 meta_rectangle_to_string (const MetaRectangle *rect,
@@ -150,6 +179,16 @@ meta_rectangle_area (const MetaRectangle *rect)
   return rect->width * rect->height;
 }
 
+/**
+ * meta_rectangle_intersect:
+ * @src1: a #MetaRectangle
+ * @src2: another #MetaRectangle
+ * @dest: (out caller-allocates): an empty #MetaRectangle, to be filled
+ *   with the coordinates of the intersection.
+ *
+ * Returns: TRUE is some intersection exists and is not degenerate, FALSE
+ *   otherwise.
+ */
 gboolean
 meta_rectangle_intersect (const MetaRectangle *src1,
 			  const MetaRectangle *src2,
@@ -197,6 +236,13 @@ meta_rectangle_equal (const MetaRectangle *src1,
           (src1->height == src2->height));
 }
 
+/**
+ * meta_rectangle_union:
+ * @rect1: a #MetaRectangle
+ * @rect2: another #MetaRectangle
+ * @dest: (out caller-allocates): an empty #MetaRectangle, to be filled
+ *   with the coordinates of the bounding box.
+ */
 void
 meta_rectangle_union (const MetaRectangle *rect1,
                       const MetaRectangle *rect2,
@@ -311,7 +357,6 @@ meta_rectangle_resize_with_gravity (const MetaRectangle *old_rect,
    */
 
   /* First, the x direction */
-  int adjust = 0;
   switch (gravity)
     {
     case NorthWestGravity:
@@ -344,7 +389,6 @@ meta_rectangle_resize_with_gravity (const MetaRectangle *old_rect,
   rect->width = new_width;
   
   /* Next, the y direction */
-  adjust = 0;
   switch (gravity)
     {
     case NorthWestGravity:
@@ -500,7 +544,12 @@ compare_rect_areas (gconstpointer a, gconstpointer b)
   return b_area - a_area; /* positive ret value denotes b > a, ... */
 }
 
-/* This function is trying to find a "minimal spanning set (of rectangles)"
+/**
+ * meta_rectangle_get_minimal_spanning_set_for_region:
+ * @basic_rect: Input rectangle
+ * @all_struts: (element-type Meta.Rectangle): List of struts
+ *
+ * This function is trying to find a "minimal spanning set (of rectangles)"
  * for a given region.
  *
  * The region is given by taking basic_rect, then removing the areas
@@ -513,10 +562,7 @@ compare_rect_areas (gconstpointer a, gconstpointer b)
  * the region if and only if it is contained within at least one of the
  * rectangles.
  *
- * The GList* returned will be a list of (allocated) MetaRectangles.
- * The list will need to be freed by calling
- * meta_rectangle_free_spanning_set() on it (or by manually
- * implementing that function...)
+ * Returns: (transfer full) (element-type Meta.Rectangle): Minimal spanning set
  */
 GList*
 meta_rectangle_get_minimal_spanning_set_for_region (
@@ -649,6 +695,10 @@ meta_rectangle_get_minimal_spanning_set_for_region (
   return ret;
 }
 
+/**
+ * meta_rectangle_expand_region: (skip)
+ *
+ */
 GList*
 meta_rectangle_expand_region (GList     *region,
                               const int  left_expand,
@@ -665,6 +715,10 @@ meta_rectangle_expand_region (GList     *region,
                                                      0);
 }
 
+/**
+ * meta_rectangle_expand_region_conditionally: (skip)
+ *
+ */
 GList*
 meta_rectangle_expand_region_conditionally (GList     *region,
                                             const int  left_expand,
@@ -1642,7 +1696,10 @@ fix_up_edges (MetaRectangle *rect,         MetaEdge *edge,
     }
 }
 
-/* This function removes intersections of edges with the rectangles from the
+/**
+ * meta_rectangle_remove_intersections_with_boxes_from_edges: (skip)
+ *
+ * This function removes intersections of edges with the rectangles from the
  * list of edges.
  */
 GList*
@@ -1708,7 +1765,11 @@ meta_rectangle_remove_intersections_with_boxes_from_edges (
   return edges;
 }
 
-/* This function is trying to find all the edges of an onscreen region. */
+/**
+ * meta_rectangle_find_onscreen_edges: (skip)
+ *
+ * This function is trying to find all the edges of an onscreen region.
+ */
 GList*
 meta_rectangle_find_onscreen_edges (const MetaRectangle *basic_rect,
                                     const GSList        *all_struts)
@@ -1791,6 +1852,10 @@ meta_rectangle_find_onscreen_edges (const MetaRectangle *basic_rect,
   return ret;
 }
 
+/**
+ * meta_rectangle_find_nonintersected_monitor_edges: (skip)
+ *
+ */
 GList*
 meta_rectangle_find_nonintersected_monitor_edges (
                                     const GList         *monitor_rects,
