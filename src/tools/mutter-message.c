@@ -29,34 +29,7 @@
 #define _(x) dgettext (GETTEXT_PACKAGE, x)
 #define N_(x) x
 
-
-static void
-send_restart (void)
-{
-  XEvent xev;
-
-  xev.xclient.type = ClientMessage;
-  xev.xclient.serial = 0;
-  xev.xclient.send_event = True;
-  xev.xclient.display = gdk_display;
-  xev.xclient.window = gdk_x11_get_default_root_xwindow ();
-  xev.xclient.message_type = XInternAtom (gdk_display,
-                                          "_MUTTER_RESTART_MESSAGE",
-                                          False);
-  xev.xclient.format = 32;
-  xev.xclient.data.l[0] = 0;
-  xev.xclient.data.l[1] = 0;
-  xev.xclient.data.l[2] = 0;
-
-  XSendEvent (gdk_display,
-              gdk_x11_get_default_root_xwindow (),
-              False,
-	      SubstructureRedirectMask | SubstructureNotifyMask,
-	      &xev);
-
-  XFlush (gdk_display);
-  XSync (gdk_display, False);
-}
+static Display *display;
 
 static void
 send_reload_theme (void)
@@ -66,9 +39,9 @@ send_reload_theme (void)
   xev.xclient.type = ClientMessage;
   xev.xclient.serial = 0;
   xev.xclient.send_event = True;
-  xev.xclient.display = gdk_display;
+  xev.xclient.display = display;
   xev.xclient.window = gdk_x11_get_default_root_xwindow ();
-  xev.xclient.message_type = XInternAtom (gdk_display,
+  xev.xclient.message_type = XInternAtom (display,
                                           "_MUTTER_RELOAD_THEME_MESSAGE",
                                           False);
   xev.xclient.format = 32;
@@ -76,14 +49,14 @@ send_reload_theme (void)
   xev.xclient.data.l[1] = 0;
   xev.xclient.data.l[2] = 0;
 
-  XSendEvent (gdk_display,
+  XSendEvent (display,
               gdk_x11_get_default_root_xwindow (),
               False,
 	      SubstructureRedirectMask | SubstructureNotifyMask,
 	      &xev);
 
-  XFlush (gdk_display);
-  XSync (gdk_display, False);
+  XFlush (display);
+  XSync (display, False);
 }
 
 static void
@@ -94,9 +67,9 @@ send_set_keybindings (gboolean enabled)
   xev.xclient.type = ClientMessage;
   xev.xclient.serial = 0;
   xev.xclient.send_event = True;
-  xev.xclient.display = gdk_display;
+  xev.xclient.display = display;
   xev.xclient.window = gdk_x11_get_default_root_xwindow ();
-  xev.xclient.message_type = XInternAtom (gdk_display,
+  xev.xclient.message_type = XInternAtom (display,
                                           "_MUTTER_SET_KEYBINDINGS_MESSAGE",
                                           False);
   xev.xclient.format = 32;
@@ -104,14 +77,14 @@ send_set_keybindings (gboolean enabled)
   xev.xclient.data.l[1] = 0;
   xev.xclient.data.l[2] = 0;
 
-  XSendEvent (gdk_display,
+  XSendEvent (display,
               gdk_x11_get_default_root_xwindow (),
               False,
 	      SubstructureRedirectMask | SubstructureNotifyMask,
 	      &xev);
 
-  XFlush (gdk_display);
-  XSync (gdk_display, False);
+  XFlush (display);
+  XSync (display, False);
 }
 
 #ifdef WITH_VERBOSE_MODE
@@ -123,9 +96,9 @@ send_toggle_verbose (void)
   xev.xclient.type = ClientMessage;
   xev.xclient.serial = 0;
   xev.xclient.send_event = True;
-  xev.xclient.display = gdk_display;
+  xev.xclient.display = display;
   xev.xclient.window = gdk_x11_get_default_root_xwindow ();
-  xev.xclient.message_type = XInternAtom (gdk_display,
+  xev.xclient.message_type = XInternAtom (display,
                                           "_MUTTER_TOGGLE_VERBOSE",
                                           False);
   xev.xclient.format = 32;
@@ -133,14 +106,14 @@ send_toggle_verbose (void)
   xev.xclient.data.l[1] = 0;
   xev.xclient.data.l[2] = 0;
 
-  XSendEvent (gdk_display,
+  XSendEvent (display,
               gdk_x11_get_default_root_xwindow (),
               False,
 	      SubstructureRedirectMask | SubstructureNotifyMask,
 	      &xev);
 
-  XFlush (gdk_display);
-  XSync (gdk_display, False);
+  XFlush (display);
+  XSync (display, False);
 }
 #endif
 
@@ -148,7 +121,7 @@ static void
 usage (void)
 {
   g_printerr (_("Usage: %s\n"),
-              "mutter-message (restart|reload-theme|enable-keybindings|disable-keybindings|toggle-verbose)");
+              "mutter-message (reload-theme|enable-keybindings|disable-keybindings|toggle-verbose)");
   exit (1);
 }
 
@@ -162,9 +135,9 @@ main (int argc, char **argv)
   if (argc < 2)
     usage ();
 
-  if (strcmp (argv[1], "restart") == 0)
-    send_restart ();
-  else if (strcmp (argv[1], "reload-theme") == 0)
+  display = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
+
+  if (strcmp (argv[1], "reload-theme") == 0)
     send_reload_theme ();
   else if (strcmp (argv[1], "enable-keybindings") == 0)
     send_set_keybindings (TRUE);

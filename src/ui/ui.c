@@ -23,18 +23,19 @@
  */
 
 #include <config.h>
-#include "prefs.h"
+#include <meta/prefs.h>
 #include "ui.h"
 #include "frames.h"
-#include "util.h"
+#include <meta/util.h>
 #include "menu.h"
 #include "core.h"
-#include "theme.h"
+#include "theme-private.h"
 
 #include "inlinepixbufs.h"
 
 #include <string.h>
 #include <stdlib.h>
+#include <cairo-xlib.h>
 
 static void meta_stock_icons_init (void);
 static void meta_ui_accelerator_parse (const char      *accel,
@@ -47,12 +48,29 @@ struct _MetaUI
   Display *xdisplay;
   Screen *xscreen;
   MetaFrames *frames;
+
+  /* For double-click tracking */
+  guint button_click_number;
+  Window button_click_window;
+  int button_click_x;
+  int button_click_y;
+  guint32 button_click_time;
 };
 
 void
-meta_ui_init (int *argc, char ***argv)
+meta_ui_init (void)
 {
-  if (!gtk_init_check (argc, argv))
+  /* As of 2.91.7, Gdk uses XI2 by default, which conflicts with the
+   * direct X calls we use - in particular, events caused by calls to
+   * XGrabPointer/XGrabKeyboard are no longer understood by GDK, while
+   * GDK will no longer generate the core XEvents we process.
+   * So at least for now, enforce the previous behavior.
+   */
+#if GTK_CHECK_VERSION(2, 91, 7)
+  gdk_disable_multidevice ();
+#endif
+
+  if (!gtk_init_check (NULL, NULL))
     meta_fatal ("Unable to open X display %s\n", XDisplayName (NULL));
 
   meta_stock_icons_init ();
@@ -61,7 +79,140 @@ meta_ui_init (int *argc, char ***argv)
 Display*
 meta_ui_get_display (void)
 {
-  return gdk_display;
+  return GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
+}
+
+/* We do some of our event handling in frames.c, which expects
+ * GDK events delivered by GTK+.  However, since the transition to
+ * client side windows, we can't let GDK see button events, since the
+ * client-side tracking of implicit and explicit grabs it does will
+ * get confused by our direct use of X grabs in the core code.
+ *
+ * So we do a very minimal GDK => GTK event conversion here and send on the
+ * events we care about, and then filter them out so they don't go
+ * through the normal GDK event handling.
+ *
+ * To reduce the amount of code, the only events fields filled out
+ * below are the ones that frames.c uses. If frames.c is modified to
+ * use more fields, more fields need to be filled out below.
+ */
+
+static gboolean
+maybe_redirect_mouse_event (XEvent *xevent)
+{
+  GdkDisplay *gdisplay;
+  GdkDeviceManager *gmanager;
+  MetaUI *ui;
+  GdkEvent *gevent;
+  GdkWindow *gdk_window;
+  Window window;
+
+  switch (xevent->type)
+    {
+    case ButtonPress:
+    case ButtonRelease:
+      window = xevent->xbutton.window;
+      break;
+    case MotionNotify:
+      window = xevent->xmotion.window;
+      break;
+    case EnterNotify:
+    case LeaveNotify:
+      window = xevent->xcrossing.window;
+      break;
+    default:
+      return FALSE;
+    }
+
+  gdisplay = gdk_x11_lookup_xdisplay (xevent->xany.display);
+  ui = g_object_get_data (G_OBJECT (gdisplay), "meta-ui");
+  if (!ui)
+    return FALSE;
+
+  gdk_window = gdk_x11_window_lookup_for_display (gdisplay, window);
+  if (gdk_window == NULL)
+    return FALSE;
+
+  /* If GDK already thinks it has a grab, we better let it see events; this
+   * is the menu-navigation case and events need to get sent to the appropriate
+   * (client-side) subwindow for individual menu items.
+   */
+  if (gdk_display_pointer_is_grabbed (gdisplay))
+    return FALSE;
+
+  switch (xevent->type)
+    {
+    case ButtonPress:
+    case ButtonRelease:
+      if (xevent->type == ButtonPress)
+        {
+          GtkSettings *settings = gtk_settings_get_default ();
+          int double_click_time;
+          int double_click_distance;
+
+          g_object_get (settings,
+                        "gtk-double-click-time", &double_click_time,
+                        "gtk-double-click-distance", &double_click_distance,
+                        NULL);
+
+          if (xevent->xbutton.button == ui->button_click_number &&
+              xevent->xbutton.window == ui->button_click_window &&
+              xevent->xbutton.time < ui->button_click_time + double_click_time &&
+              ABS (xevent->xbutton.x - ui->button_click_x) <= double_click_distance &&
+              ABS (xevent->xbutton.y - ui->button_click_y) <= double_click_distance)
+            {
+              gevent = gdk_event_new (GDK_2BUTTON_PRESS);
+
+              ui->button_click_number = 0;
+            }
+          else
+            {
+              gevent = gdk_event_new (GDK_BUTTON_PRESS);
+              ui->button_click_number = xevent->xbutton.button;
+              ui->button_click_window = xevent->xbutton.window;
+              ui->button_click_time = xevent->xbutton.time;
+              ui->button_click_x = xevent->xbutton.x;
+              ui->button_click_y = xevent->xbutton.y;
+            }
+        }
+      else
+        {
+          gevent = gdk_event_new (GDK_BUTTON_RELEASE);
+        }
+
+      gevent->button.window = g_object_ref (gdk_window);
+      gevent->button.button = xevent->xbutton.button;
+      gevent->button.time = xevent->xbutton.time;
+      gevent->button.x = xevent->xbutton.x;
+      gevent->button.y = xevent->xbutton.y;
+      gevent->button.x_root = xevent->xbutton.x_root;
+      gevent->button.y_root = xevent->xbutton.y_root;
+
+      break;
+    case MotionNotify:
+      gevent = gdk_event_new (GDK_MOTION_NOTIFY);
+      gevent->motion.type = GDK_MOTION_NOTIFY;
+      gevent->motion.window = g_object_ref (gdk_window);
+      break;
+    case EnterNotify:
+    case LeaveNotify:
+      gevent = gdk_event_new (xevent->type == EnterNotify ? GDK_ENTER_NOTIFY : GDK_LEAVE_NOTIFY);
+      gevent->crossing.window = g_object_ref (gdk_window);
+      gevent->crossing.x = xevent->xcrossing.x;
+      gevent->crossing.y = xevent->xcrossing.y;
+      break;
+    default:
+      g_assert_not_reached ();
+      break;
+    }
+
+  /* If we've gotten here, we've created the gdk_event and should send it on */
+  gmanager = gdk_display_get_device_manager (gdisplay);
+  gdk_event_set_device (gevent, gdk_device_manager_get_client_pointer (gmanager));
+  gtk_main_do_event (gevent);
+  gdk_event_free (gevent);
+
+  return TRUE;
 }
 
 typedef struct _EventFunc EventFunc;
@@ -81,7 +232,8 @@ filter_func (GdkXEvent *xevent,
 {
   g_return_val_if_fail (ef != NULL, GDK_FILTER_CONTINUE);
 
-  if ((* ef->func) (xevent, ef->data))
+  if ((* ef->func) (xevent, ef->data) ||
+      maybe_redirect_mouse_event (xevent))
     return GDK_FILTER_REMOVE;
   else
     return GDK_FILTER_CONTINUE;
@@ -119,23 +271,36 @@ MetaUI*
 meta_ui_new (Display *xdisplay,
              Screen  *screen)
 {
+  GdkDisplay *gdisplay;
   MetaUI *ui;
 
-  ui = g_new (MetaUI, 1);
+  ui = g_new0 (MetaUI, 1);
   ui->xdisplay = xdisplay;
   ui->xscreen = screen;
 
-  g_assert (xdisplay == gdk_display);
+  gdisplay = gdk_x11_lookup_xdisplay (xdisplay);
+  g_assert (gdisplay == gdk_display_get_default ());
+
   ui->frames = meta_frames_new (XScreenNumberOfScreen (screen));
-  gtk_widget_realize (GTK_WIDGET (ui->frames));
-  
+  /* This does not actually show any widget. MetaFrames has been hacked so
+   * that showing it doesn't actually do anything. But we need the flags
+   * set for GTK to deliver events properly. */
+  gtk_widget_show (GTK_WIDGET (ui->frames));
+
+  g_object_set_data (G_OBJECT (gdisplay), "meta-ui", ui);
+
   return ui;
 }
 
 void
 meta_ui_free (MetaUI *ui)
 {
+  GdkDisplay *gdisplay;
+
   gtk_widget_destroy (GTK_WIDGET (ui->frames));
+
+  gdisplay = gdk_x11_lookup_xdisplay (ui->xdisplay);
+  g_object_set_data (G_OBJECT (gdisplay), "meta-ui", NULL);
 
   g_free (ui);
 }
@@ -168,7 +333,6 @@ meta_ui_create_frame_window (MetaUI *ui,
   gint attributes_mask;
   GdkWindow *window;
   GdkVisual *visual;
-  GdkColormap *cmap = gdk_screen_get_default_colormap (screen);
   
   /* Default depth/visual handles clients with weird visuals; they can
    * always be children of the root depth/visual obviously, but
@@ -181,7 +345,6 @@ meta_ui_create_frame_window (MetaUI *ui,
     {
       visual = gdk_x11_screen_lookup_visual (screen,
                                              XVisualIDFromVisual (xvisual));
-      cmap = gdk_colormap_new (visual, FALSE);
     }
 
   attrs.title = NULL;
@@ -197,7 +360,6 @@ meta_ui_create_frame_window (MetaUI *ui,
   attrs.y = y;
   attrs.wclass = GDK_INPUT_OUTPUT;
   attrs.visual = visual;
-  attrs.colormap = cmap;
   attrs.window_type = GDK_WINDOW_CHILD;
   attrs.cursor = NULL;
   attrs.wmclass_name = NULL;
@@ -207,7 +369,7 @@ meta_ui_create_frame_window (MetaUI *ui,
   attrs.width  = width;
   attrs.height = height;
 
-  attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL | GDK_WA_COLORMAP;
+  attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL;
 
   /* We make an assumption that gdk_window_new() is going to call
    * XCreateWindow as it's first operation; this seems to be true currently
@@ -249,8 +411,10 @@ meta_ui_map_frame   (MetaUI *ui,
                      Window  xwindow)
 {
   GdkWindow *window;
+  GdkDisplay *display;
 
-  window = gdk_xid_table_lookup (xwindow);
+  display = gdk_x11_lookup_xdisplay (ui->xdisplay);
+  window = gdk_x11_window_lookup_for_display (display, xwindow);
 
   if (window)
     gdk_window_show_unraised (window);
@@ -261,8 +425,10 @@ meta_ui_unmap_frame (MetaUI *ui,
                      Window  xwindow)
 {
   GdkWindow *window;
+  GdkDisplay *display;
 
-  window = gdk_xid_table_lookup (xwindow);
+  display = gdk_x11_lookup_xdisplay (ui->xdisplay);
+  window = gdk_x11_window_lookup_for_display (display, xwindow);
 
   if (window)
     gdk_window_hide (window);
@@ -354,211 +520,52 @@ meta_ui_window_menu_free (MetaWindowMenu *menu)
   meta_window_menu_free (menu);
 }
 
-struct _MetaImageWindow
-{
-  GtkWidget *window;
-  GdkPixmap *pixmap;
-};
-
-MetaImageWindow*
-meta_image_window_new (Display *xdisplay,
-                       int      screen_number,
-                       int      max_width,
-                       int      max_height)
-{
-  MetaImageWindow *iw;
-  GdkDisplay *gdisplay;
-  GdkScreen *gscreen;
-    
-  iw = g_new (MetaImageWindow, 1);
-  iw->window = gtk_window_new (GTK_WINDOW_POPUP);
-    
-  gdisplay = gdk_x11_lookup_xdisplay (xdisplay);
-  gscreen = gdk_display_get_screen (gdisplay, screen_number);
-  
-  gtk_window_set_screen (GTK_WINDOW (iw->window), gscreen);
- 
-  gtk_widget_realize (iw->window);
-  iw->pixmap = gdk_pixmap_new (iw->window->window,
-                               max_width, max_height,
-                               -1);
-  
-  gtk_widget_set_size_request (iw->window, 1, 1);
-  gtk_widget_set_double_buffered (iw->window, FALSE);
-  gtk_widget_set_app_paintable (iw->window, TRUE);
-  
-  return iw;
-}
-
-void
-meta_image_window_free (MetaImageWindow *iw)
-{
-  gtk_widget_destroy (iw->window);
-  g_object_unref (G_OBJECT (iw->pixmap));
-  g_free (iw);
-}
-
-void
-meta_image_window_set_showing  (MetaImageWindow *iw,
-                                gboolean         showing)
-{
-  if (showing)
-    gtk_widget_show_all (iw->window);
-  else
-    {
-      gtk_widget_hide (iw->window);
-      meta_core_increment_event_serial (gdk_display);
-    }
-}
-
-void
-meta_image_window_set (MetaImageWindow *iw,
-                       GdkPixbuf       *pixbuf,
-                       int              x,
-                       int              y)
-{
-  /* We use a back pixmap to avoid having to handle exposes, because
-   * it's really too slow for large clients being minimized, etc.
-   * and this way flicker is genuinely zero.
-   */
-
-  gdk_draw_pixbuf (iw->pixmap,
-                   iw->window->style->black_gc,
-		   pixbuf,
-                   0, 0,
-                   0, 0,
-                   gdk_pixbuf_get_width (pixbuf),
-                   gdk_pixbuf_get_height (pixbuf),
-                   GDK_RGB_DITHER_NORMAL,
-                   0, 0);
-
-  gdk_window_set_back_pixmap (iw->window->window,
-                              iw->pixmap,
-                              FALSE);
-  
-  gdk_window_move_resize (iw->window->window,
-                          x, y,
-                          gdk_pixbuf_get_width (pixbuf),
-                          gdk_pixbuf_get_height (pixbuf));
-
-  gdk_window_clear (iw->window->window);
-}
-
-static GdkColormap*
-get_cmap (GdkPixmap *pixmap)
-{
-  GdkColormap *cmap;
-
-  cmap = gdk_drawable_get_colormap (pixmap);
-  if (cmap)
-    g_object_ref (G_OBJECT (cmap));
-
-  if (cmap == NULL)
-    {
-      if (gdk_drawable_get_depth (pixmap) == 1)
-        {
-          meta_verbose ("Using NULL colormap for snapshotting bitmap\n");
-          cmap = NULL;
-        }
-      else
-        {
-          meta_verbose ("Using system cmap to snapshot pixmap\n");
-          cmap = gdk_screen_get_system_colormap (gdk_drawable_get_screen (pixmap));
-
-          g_object_ref (G_OBJECT (cmap));
-        }
-    }
-
-  /* Be sure we aren't going to blow up due to visual mismatch */
-  if (cmap &&
-      (gdk_colormap_get_visual (cmap)->depth !=
-       gdk_drawable_get_depth (pixmap)))
-    {
-      cmap = NULL;
-      meta_verbose ("Switching back to NULL cmap because of depth mismatch\n");
-    }
-  
-  return cmap;
-}
-
 GdkPixbuf*
-meta_gdk_pixbuf_get_from_window (GdkPixbuf   *dest,
-                                 Window       xwindow,
+meta_gdk_pixbuf_get_from_pixmap (Pixmap       xpixmap,
                                  int          src_x,
                                  int          src_y,
-                                 int          dest_x,
-                                 int          dest_y,
                                  int          width,
                                  int          height)
 {
-  GdkDrawable *drawable;
+  cairo_surface_t *surface;
+  Display *display;
+  Window root_return;
+  int x_ret, y_ret;
+  unsigned int w_ret, h_ret, bw_ret, depth_ret;
+  XWindowAttributes attrs;
   GdkPixbuf *retval;
-  GdkColormap *cmap;
-  
-  retval = NULL;
-  
-  drawable = gdk_xid_table_lookup (xwindow);
 
-  if (drawable)
-    g_object_ref (G_OBJECT (drawable));
-  else
-    drawable = gdk_window_foreign_new (xwindow);
+  display = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
 
-  cmap = get_cmap (drawable);
-  
-  retval = gdk_pixbuf_get_from_drawable (dest,
-                                         drawable,
-                                         cmap,
-                                         src_x, src_y,
-                                         dest_x, dest_y,
-                                         width, height);
+  if (!XGetGeometry (display, xpixmap, &root_return,
+                     &x_ret, &y_ret, &w_ret, &h_ret, &bw_ret, &depth_ret))
+    return NULL;
 
-  if (cmap)
-    g_object_unref (G_OBJECT (cmap));
-  g_object_unref (G_OBJECT (drawable));
-
-  return retval;
-}
-
-GdkPixbuf*
-meta_gdk_pixbuf_get_from_pixmap (GdkPixbuf   *dest,
-                                 Pixmap       xpixmap,
-                                 int          src_x,
-                                 int          src_y,
-                                 int          dest_x,
-                                 int          dest_y,
-                                 int          width,
-                                 int          height)
-{
-  GdkDrawable *drawable;
-  GdkPixbuf *retval;
-  GdkColormap *cmap;
-  
-  retval = NULL;
-  cmap = NULL;
-  
-  drawable = gdk_xid_table_lookup (xpixmap);
-
-  if (drawable)
-    g_object_ref (G_OBJECT (drawable));
-  else
-    drawable = gdk_pixmap_foreign_new (xpixmap);
-
-  if (drawable)
+  if (depth_ret == 1)
     {
-      cmap = get_cmap (drawable);
-  
-      retval = gdk_pixbuf_get_from_drawable (dest,
-                                             drawable,
-                                             cmap,
-                                             src_x, src_y,
-                                             dest_x, dest_y,
-                                             width, height);
+      surface = cairo_xlib_surface_create_for_bitmap (display,
+                                                      xpixmap,
+                                                      GDK_SCREEN_XSCREEN (gdk_screen_get_default ()),
+                                                      w_ret,
+                                                      h_ret);
     }
-  if (cmap)
-    g_object_unref (G_OBJECT (cmap));
-  if (drawable)
-    g_object_unref (G_OBJECT (drawable));
+  else
+    {
+      if (!XGetWindowAttributes (display, root_return, &attrs))
+        return NULL;
+
+      surface = cairo_xlib_surface_create (display,
+                                           xpixmap,
+                                           attrs.visual,
+                                           w_ret, h_ret);
+    }
+
+  retval = gdk_pixbuf_get_from_surface (surface,
+                                        src_x,
+                                        src_y,
+                                        width,
+                                        height);
+  cairo_surface_destroy (surface);
 
   return retval;
 }
@@ -597,7 +604,7 @@ meta_ui_get_default_window_icon (MetaUI *ui)
                                                    NULL);
       else
           default_icon = gtk_icon_theme_load_icon (theme,
-                                                   "gtk-missing-image",
+                                                   "image-missing",
                                                    META_ICON_WIDTH,
                                                    0,
                                                    NULL);
@@ -632,7 +639,7 @@ meta_ui_get_default_mini_icon (MetaUI *ui)
                                                    NULL);
       else
           default_icon = gtk_icon_theme_load_icon (theme,
-                                                   "gtk-missing-image",
+                                                   "image-missing",
                                                    META_MINI_ICON_WIDTH,
                                                    0,
                                                    NULL);
@@ -650,8 +657,10 @@ meta_ui_window_should_not_cause_focus (Display *xdisplay,
                                        Window   xwindow)
 {
   GdkWindow *window;
+  GdkDisplay *display;
 
-  window = gdk_xid_table_lookup (xwindow);
+  display = gdk_x11_lookup_xdisplay (xdisplay);
+  window = gdk_x11_window_lookup_for_display (display, xwindow);
 
   /* we shouldn't cause focus if we're an override redirect
    * toplevel which is not foreign
@@ -666,17 +675,20 @@ char*
 meta_text_property_to_utf8 (Display             *xdisplay,
                             const XTextProperty *prop)
 {
+  GdkDisplay *display;
   char **list;
   int count;
   char *retval;
   
   list = NULL;
 
-  count = gdk_text_property_to_utf8_list (gdk_x11_xatom_to_atom (prop->encoding),
-                                          prop->format,
-                                          prop->value,
-                                          prop->nitems,
-                                          &list);
+  display = gdk_x11_lookup_xdisplay (xdisplay);
+  count = gdk_text_property_to_utf8_list_for_display (display,
+                                                      gdk_x11_xatom_to_atom_for_display (display, prop->encoding),
+                                                      prop->format,
+                                                      prop->value,
+                                                      prop->nitems,
+                                                      &list);
 
   if (count == 0)
     retval = NULL;
@@ -701,9 +713,9 @@ meta_ui_theme_get_frame_borders (MetaUI *ui,
                                  int               *right_width)
 {
   int text_height;
+  GtkStyleContext *style = NULL;
   PangoContext *context;
   const PangoFontDescription *font_desc;
-  GtkStyle *default_style;
 
   if (meta_ui_have_a_theme ())
     {
@@ -712,8 +724,8 @@ meta_ui_theme_get_frame_borders (MetaUI *ui,
 
       if (!font_desc)
         {
-          default_style = gtk_widget_get_default_style ();
-          font_desc = default_style->font_desc;
+          style = gtk_style_context_new ();
+          font_desc = gtk_style_context_get_font (style, 0);
         }
 
       text_height = meta_pango_font_desc_get_text_height (font_desc, context);
@@ -727,6 +739,9 @@ meta_ui_theme_get_frame_borders (MetaUI *ui,
     {
       *top_height = *bottom_height = *left_width = *right_width = 0;
     }
+
+  if (style != NULL)
+    g_object_unref (style);
 }
 
 void
@@ -749,14 +764,50 @@ meta_ui_accelerator_parse (const char      *accel,
                            guint           *keycode,
                            GdkModifierType *keymask)
 {
+  const char *above_tab;
+
   if (accel[0] == '0' && accel[1] == 'x')
     {
       *keysym = 0;
       *keycode = (guint) strtoul (accel, NULL, 16);
       *keymask = 0;
+
+      return;
     }
-  else
-    gtk_accelerator_parse (accel, keysym, keymask);
+
+  /* The key name 'Above_Tab' is special - it's not an actual keysym name,
+   * but rather refers to the key above the tab key. In order to use
+   * the GDK parsing for modifiers in combination with it, we substitute
+   * it with 'Tab' temporarily before calling gtk_accelerator_parse().
+   */
+#define is_word_character(c) (g_ascii_isalnum(c) || ((c) == '_'))
+#define ABOVE_TAB "Above_Tab"
+#define ABOVE_TAB_LEN 9
+
+  above_tab = strstr (accel, ABOVE_TAB);
+  if (above_tab &&
+      (above_tab == accel || !is_word_character (above_tab[-1])) &&
+      !is_word_character (above_tab[ABOVE_TAB_LEN]))
+    {
+      char *before = g_strndup (accel, above_tab - accel);
+      char *after = g_strdup (above_tab + ABOVE_TAB_LEN);
+      char *replaced = g_strconcat (before, "Tab", after, NULL);
+
+      gtk_accelerator_parse (replaced, NULL, keymask);
+
+      g_free (before);
+      g_free (after);
+      g_free (replaced);
+
+      *keysym = META_KEY_ABOVE_TAB;
+      return;
+    }
+
+#undef is_word_character
+#undef ABOVE_TAB
+#undef ABOVE_TAB_LEN
+
+  gtk_accelerator_parse (accel, keysym, keymask);
 }
 
 gboolean
@@ -901,9 +952,11 @@ gboolean
 meta_ui_window_is_widget (MetaUI *ui,
                           Window  xwindow)
 {
+  GdkDisplay *display;
   GdkWindow *window;
 
-  window = gdk_xid_table_lookup (xwindow);
+  display = gdk_x11_lookup_xdisplay (ui->xdisplay);
+  window = gdk_x11_window_lookup_for_display (display, xwindow);
 
   if (window)
     {
@@ -980,30 +1033,3 @@ meta_ui_get_direction (void)
   return META_UI_DIRECTION_LTR;
 }
 
-GdkPixbuf *
-meta_ui_get_pixbuf_from_pixmap (Pixmap   pmap)
-{
-  GdkPixmap *gpmap;
-  GdkScreen *screen;
-  GdkPixbuf *pixbuf;
-  GdkColormap *cmap;
-  int width, height, depth;
-
-  gpmap = gdk_pixmap_foreign_new (pmap);
-  screen = gdk_drawable_get_screen (gpmap);
-
-  gdk_drawable_get_size (GDK_DRAWABLE (gpmap), &width, &height);
-  
-  depth = gdk_drawable_get_depth (GDK_DRAWABLE (gpmap));
-  if (depth <= 24)
-    cmap = gdk_screen_get_rgb_colormap (screen);
-  else
-    cmap = gdk_screen_get_rgba_colormap (screen);
-  
-  pixbuf = gdk_pixbuf_get_from_drawable (NULL, gpmap, cmap, 0, 0, 0, 0,
-                                         width, height);
-
-  g_object_unref (gpmap);
-
-  return pixbuf;
-}

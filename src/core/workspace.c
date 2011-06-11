@@ -24,12 +24,14 @@
  */
 
 #include <config.h>
-#include "workspace.h"
+#include "screen-private.h"
+#include <meta/workspace.h>
 #include "workspace-private.h"
-#include "errors.h"
-#include "prefs.h"
+#include "boxes-private.h"
+#include <meta/errors.h>
+#include <meta/prefs.h>
 
-#include "compositor.h"
+#include <meta/compositor.h>
 
 #include <X11/Xatom.h>
 #include <string.h>
@@ -44,7 +46,6 @@ enum {
 };
 
 void meta_workspace_queue_calc_showing   (MetaWorkspace *workspace);
-static void set_active_space_hint        (MetaScreen *screen);
 static void focus_ancestor_or_mru_window (MetaWorkspace *workspace,
                                           MetaWindow    *not_this_one,
                                           guint32        timestamp);
@@ -556,7 +557,7 @@ meta_workspace_activate_with_focus (MetaWorkspace *workspace,
 
   workspace->screen->active_workspace = workspace;
 
-  set_active_space_hint (workspace->screen);
+  meta_screen_set_active_workspace_hint (workspace->screen);
 
   /* If the "show desktop" mode is active for either the old workspace
    * or the new one *but not both*, then update the
@@ -617,10 +618,20 @@ meta_workspace_activate_with_focus (MetaWorkspace *workspace,
    meta_screen_calc_workspace_layout (workspace->screen, num_workspaces,
                                       new_space, &layout2);
 
-   if (layout1.current_col < layout2.current_col)
-     direction = META_MOTION_RIGHT;
-   if (layout1.current_col > layout2.current_col)
-     direction = META_MOTION_LEFT;
+   if (meta_ui_get_direction() == META_UI_DIRECTION_RTL)
+     {
+       if (layout1.current_col > layout2.current_col)
+         direction = META_MOTION_RIGHT;
+       else if (layout1.current_col < layout2.current_col)
+         direction = META_MOTION_LEFT;
+     }
+   else
+    {
+       if (layout1.current_col < layout2.current_col)
+         direction = META_MOTION_RIGHT;
+       else if (layout1.current_col > layout2.current_col)
+         direction = META_MOTION_LEFT;
+    }
 
    if (layout1.current_row < layout2.current_row)
      {
@@ -706,7 +717,7 @@ meta_workspace_update_window_hints (MetaWorkspace *workspace)
 
 /**
  * meta_workspace_list_windows:
- * @display: a #MetaDisplay
+ * @workspace: a #MetaWorkspace
  *
  * Gets windows contained on the workspace, including workspace->windows
  * and also sticky windows. Override-redirect windows are not included.
@@ -739,32 +750,6 @@ meta_workspace_list_windows (MetaWorkspace *workspace)
   g_slist_free (display_windows);
 
   return workspace_windows;
-}
-
-static void
-set_active_space_hint (MetaScreen *screen)
-{
-  unsigned long data[1];
-
-  /* this is because we destroy the spaces in order,
-   * so we always end up setting a current desktop of
-   * 0 when closing a screen, so lose the current desktop
-   * on restart. By doing this we keep the current
-   * desktop on restart.
-   */
-  if (screen->closing > 0)
-    return;
-  
-  data[0] = meta_workspace_index (screen->active_workspace);
-
-  meta_verbose ("Setting _NET_CURRENT_DESKTOP to %lu\n", data[0]);
-  
-  meta_error_trap_push (screen->display);
-  XChangeProperty (screen->display->xdisplay, screen->xroot,
-                   screen->display->atom__NET_CURRENT_DESKTOP,
-                   XA_CARDINAL,
-                   32, PropModeReplace, (guchar*) data, 1);
-  meta_error_trap_pop (screen->display, FALSE);
 }
 
 void
@@ -1048,7 +1033,7 @@ strut_lists_equal (GSList *l,
 /**
  * meta_workspace_set_builtin_struts:
  * @workspace: a #MetaWorkspace
- * @struts: (element-type Strut) (transfer none): list of #MetaStrut
+ * @struts: (element-type Meta.Strut) (transfer none): list of #MetaStrut
  *
  * Sets a list of struts that will be used in addition to the struts
  * of the windows in the workspace when computing the work area of

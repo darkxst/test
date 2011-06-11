@@ -21,7 +21,8 @@
  * 02111-1307, USA.
  */
 
-#include "mutter-plugin.h"
+#include <meta/meta-plugin.h>
+#include <meta/window.h>
 
 #include <libintl.h>
 #define _(x) dgettext (GETTEXT_PACKAGE, x)
@@ -39,71 +40,78 @@
 
 #define ACTOR_DATA_KEY "MCCP-Default-actor-data"
 
-#define MUTTER_TYPE_DEFAULT_PLUGIN            (mutter_default_plugin_get_type ())
-#define MUTTER_DEFAULT_PLUGIN(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), MUTTER_TYPE_DEFAULT_PLUGIN, MutterDefaultPlugin))
-#define MUTTER_DEFAULT_PLUGIN_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  MUTTER_TYPE_DEFAULT_PLUGIN, MutterDefaultPluginClass))
-#define MUTTER_IS_DEFAULT_PLUGIN(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), MUTTER_DEFAULT_PLUGIN_TYPE))
-#define MUTTER_IS_DEFAULT_PLUGIN_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  MUTTER_TYPE_DEFAULT_PLUGIN))
-#define MUTTER_DEFAULT_PLUGIN_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj),  MUTTER_TYPE_DEFAULT_PLUGIN, MutterDefaultPluginClass))
+#define META_TYPE_DEFAULT_PLUGIN            (meta_default_plugin_get_type ())
+#define META_DEFAULT_PLUGIN(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_DEFAULT_PLUGIN, MetaDefaultPlugin))
+#define META_DEFAULT_PLUGIN_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  META_TYPE_DEFAULT_PLUGIN, MetaDefaultPluginClass))
+#define META_IS_DEFAULT_PLUGIN(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), META_DEFAULT_PLUGIN_TYPE))
+#define META_IS_DEFAULT_PLUGIN_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  META_TYPE_DEFAULT_PLUGIN))
+#define META_DEFAULT_PLUGIN_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj),  META_TYPE_DEFAULT_PLUGIN, MetaDefaultPluginClass))
 
-#define MUTTER_DEFAULT_PLUGIN_GET_PRIVATE(obj) \
-(G_TYPE_INSTANCE_GET_PRIVATE ((obj), MUTTER_TYPE_DEFAULT_PLUGIN, MutterDefaultPluginPrivate))
+#define META_DEFAULT_PLUGIN_GET_PRIVATE(obj) \
+(G_TYPE_INSTANCE_GET_PRIVATE ((obj), META_TYPE_DEFAULT_PLUGIN, MetaDefaultPluginPrivate))
 
-typedef struct _MutterDefaultPlugin        MutterDefaultPlugin;
-typedef struct _MutterDefaultPluginClass   MutterDefaultPluginClass;
-typedef struct _MutterDefaultPluginPrivate MutterDefaultPluginPrivate;
+typedef struct _MetaDefaultPlugin        MetaDefaultPlugin;
+typedef struct _MetaDefaultPluginClass   MetaDefaultPluginClass;
+typedef struct _MetaDefaultPluginPrivate MetaDefaultPluginPrivate;
 
-struct _MutterDefaultPlugin
+struct _MetaDefaultPlugin
 {
-  MutterPlugin parent;
+  MetaPlugin parent;
 
-  MutterDefaultPluginPrivate *priv;
+  MetaDefaultPluginPrivate *priv;
 };
 
-struct _MutterDefaultPluginClass
+struct _MetaDefaultPluginClass
 {
-  MutterPluginClass parent_class;
+  MetaPluginClass parent_class;
 };
 
 static GQuark actor_data_quark = 0;
 
-static void     minimize   (MutterPlugin *plugin,
-                            MutterWindow *actor);
-static void     map        (MutterPlugin *plugin,
-                            MutterWindow *actor);
-static void     destroy    (MutterPlugin *plugin,
-                            MutterWindow *actor);
-static void     maximize   (MutterPlugin *plugin,
-                            MutterWindow *actor,
-                            gint x, gint y, gint width, gint height);
-static void     unmaximize (MutterPlugin *plugin,
-                            MutterWindow *actor,
-                            gint x, gint y, gint width, gint height);
+static void minimize   (MetaPlugin      *plugin,
+                        MetaWindowActor *actor);
+static void map        (MetaPlugin      *plugin,
+                        MetaWindowActor *actor);
+static void destroy    (MetaPlugin      *plugin,
+                        MetaWindowActor *actor);
+static void maximize   (MetaPlugin      *plugin,
+                        MetaWindowActor *actor,
+                        gint             x,
+                        gint             y,
+                        gint             width,
+                        gint             height);
+static void unmaximize (MetaPlugin      *plugin,
+                        MetaWindowActor *actor,
+                        gint             x,
+                        gint             y,
+                        gint             width,
+                        gint             height);
 
-static void switch_workspace (MutterPlugin *plugin,
-                              const GList **actors, gint from, gint to,
-                              MetaMotionDirection direction);
+static void switch_workspace (MetaPlugin          *plugin,
+                              gint                 from,
+                              gint                 to,
+                              MetaMotionDirection  direction);
 
-static void kill_effect (MutterPlugin *plugin,
-                         MutterWindow *actor, gulong event);
+static void kill_window_effects   (MetaPlugin      *plugin,
+                                   MetaWindowActor *actor);
+static void kill_switch_workspace (MetaPlugin      *plugin);
 
-static const MutterPluginInfo * plugin_info (MutterPlugin *plugin);
+static const MetaPluginInfo * plugin_info (MetaPlugin *plugin);
 
-MUTTER_PLUGIN_DECLARE(MutterDefaultPlugin, mutter_default_plugin);
+META_PLUGIN_DECLARE(MetaDefaultPlugin, meta_default_plugin);
 
 /*
  * Plugin private data that we store in the .plugin_private member.
  */
-struct _MutterDefaultPluginPrivate
+struct _MetaDefaultPluginPrivate
 {
   /* Valid only when switch_workspace effect is in progress */
   ClutterTimeline       *tml_switch_workspace1;
   ClutterTimeline       *tml_switch_workspace2;
-  GList                **actors;
   ClutterActor          *desktop1;
   ClutterActor          *desktop2;
 
-  MutterPluginInfo       info;
+  MetaPluginInfo         info;
 
   gboolean               debug_mode : 1;
 };
@@ -128,26 +136,26 @@ typedef struct _ActorPrivate
 typedef struct
 {
   ClutterActor *actor;
-  MutterPlugin *plugin;
+  MetaPlugin *plugin;
 } EffectCompleteData;
 
 
 static void
-mutter_default_plugin_dispose (GObject *object)
+meta_default_plugin_dispose (GObject *object)
 {
-  /* MutterDefaultPluginPrivate *priv = MUTTER_DEFAULT_PLUGIN (object)->priv;
+  /* MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (object)->priv;
   */
-  G_OBJECT_CLASS (mutter_default_plugin_parent_class)->dispose (object);
+  G_OBJECT_CLASS (meta_default_plugin_parent_class)->dispose (object);
 }
 
 static void
-mutter_default_plugin_finalize (GObject *object)
+meta_default_plugin_finalize (GObject *object)
 {
-  G_OBJECT_CLASS (mutter_default_plugin_parent_class)->finalize (object);
+  G_OBJECT_CLASS (meta_default_plugin_parent_class)->finalize (object);
 }
 
 static void
-mutter_default_plugin_set_property (GObject      *object,
+meta_default_plugin_set_property (GObject      *object,
 			    guint         prop_id,
 			    const GValue *value,
 			    GParamSpec   *pspec)
@@ -161,7 +169,7 @@ mutter_default_plugin_set_property (GObject      *object,
 }
 
 static void
-mutter_default_plugin_get_property (GObject    *object,
+meta_default_plugin_get_property (GObject    *object,
 			    guint       prop_id,
 			    GValue     *value,
 			    GParamSpec *pspec)
@@ -175,10 +183,9 @@ mutter_default_plugin_get_property (GObject    *object,
 }
 
 static void
-mutter_default_plugin_constructed (GObject *object)
+start (MetaPlugin *plugin)
 {
-  MutterPlugin               *plugin = MUTTER_PLUGIN (object);
-  MutterDefaultPluginPrivate *priv   = MUTTER_DEFAULT_PLUGIN (object)->priv;
+  MetaDefaultPluginPrivate *priv   = META_DEFAULT_PLUGIN (plugin)->priv;
 
   guint destroy_timeout  = DESTROY_TIMEOUT;
   guint minimize_timeout = MINIMIZE_TIMEOUT;
@@ -186,7 +193,7 @@ mutter_default_plugin_constructed (GObject *object)
   guint map_timeout      = MAP_TIMEOUT;
   guint switch_timeout   = SWITCH_TIMEOUT;
 
-  if (mutter_plugin_debug_mode (plugin))
+  if (meta_plugin_debug_mode (plugin))
     {
       g_debug ("Plugin %s: Entering debug mode.", priv->info.name);
 
@@ -201,39 +208,39 @@ mutter_default_plugin_constructed (GObject *object)
       map_timeout      *= 2;
       switch_timeout   *= 2;
     }
-
 }
 
 static void
-mutter_default_plugin_class_init (MutterDefaultPluginClass *klass)
+meta_default_plugin_class_init (MetaDefaultPluginClass *klass)
 {
   GObjectClass      *gobject_class = G_OBJECT_CLASS (klass);
-  MutterPluginClass *plugin_class  = MUTTER_PLUGIN_CLASS (klass);
+  MetaPluginClass *plugin_class  = META_PLUGIN_CLASS (klass);
 
-  gobject_class->finalize        = mutter_default_plugin_finalize;
-  gobject_class->dispose         = mutter_default_plugin_dispose;
-  gobject_class->constructed     = mutter_default_plugin_constructed;
-  gobject_class->set_property    = mutter_default_plugin_set_property;
-  gobject_class->get_property    = mutter_default_plugin_get_property;
+  gobject_class->finalize        = meta_default_plugin_finalize;
+  gobject_class->dispose         = meta_default_plugin_dispose;
+  gobject_class->set_property    = meta_default_plugin_set_property;
+  gobject_class->get_property    = meta_default_plugin_get_property;
 
+  plugin_class->start            = start;
   plugin_class->map              = map;
   plugin_class->minimize         = minimize;
   plugin_class->maximize         = maximize;
   plugin_class->unmaximize       = unmaximize;
   plugin_class->destroy          = destroy;
   plugin_class->switch_workspace = switch_workspace;
-  plugin_class->kill_effect      = kill_effect;
   plugin_class->plugin_info      = plugin_info;
+  plugin_class->kill_window_effects   = kill_window_effects;
+  plugin_class->kill_switch_workspace = kill_switch_workspace;
 
-  g_type_class_add_private (gobject_class, sizeof (MutterDefaultPluginPrivate));
+  g_type_class_add_private (gobject_class, sizeof (MetaDefaultPluginPrivate));
 }
 
 static void
-mutter_default_plugin_init (MutterDefaultPlugin *self)
+meta_default_plugin_init (MetaDefaultPlugin *self)
 {
-  MutterDefaultPluginPrivate *priv;
+  MetaDefaultPluginPrivate *priv;
 
-  self->priv = priv = MUTTER_DEFAULT_PLUGIN_GET_PRIVATE (self);
+  self->priv = priv = META_DEFAULT_PLUGIN_GET_PRIVATE (self);
 
   priv->info.name        = "Default Effects";
   priv->info.version     = "0.1";
@@ -253,7 +260,7 @@ free_actor_private (gpointer data)
 }
 
 static ActorPrivate *
-get_actor_private (MutterWindow *actor)
+get_actor_private (MetaWindowActor *actor)
 {
   ActorPrivate *priv = g_object_get_qdata (G_OBJECT (actor), actor_data_quark);
 
@@ -272,26 +279,18 @@ get_actor_private (MutterWindow *actor)
   return priv;
 }
 
-typedef struct SwitchWorkspaceData
-{
-  MutterPlugin  *plugin;
-  const GList  **actors;
-} SwitchWorkspaceData;
-
 static void
 on_switch_workspace_effect_complete (ClutterTimeline *timeline, gpointer data)
 {
-  SwitchWorkspaceData        *sw_data = data;
-  MutterPlugin               *plugin  = sw_data->plugin;
-  MutterDefaultPluginPrivate *priv = MUTTER_DEFAULT_PLUGIN (plugin)->priv;
-  GList        *l     = *((GList**)sw_data->actors);
-  MutterWindow *actor_for_cb = l->data;
+  MetaPlugin               *plugin  = META_PLUGIN (data);
+  MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
+  GList        *l     = meta_plugin_get_window_actors (plugin);
 
   while (l)
     {
       ClutterActor *a = l->data;
-      MutterWindow *mc_window = MUTTER_WINDOW (a);
-      ActorPrivate *apriv = get_actor_private (mc_window);
+      MetaWindowActor *window_actor = META_WINDOW_ACTOR (a);
+      ActorPrivate *apriv = get_actor_private (window_actor);
 
       if (apriv->orig_parent)
         {
@@ -305,40 +304,30 @@ on_switch_workspace_effect_complete (ClutterTimeline *timeline, gpointer data)
   clutter_actor_destroy (priv->desktop1);
   clutter_actor_destroy (priv->desktop2);
 
-  priv->actors = NULL;
   priv->tml_switch_workspace1 = NULL;
   priv->tml_switch_workspace2 = NULL;
   priv->desktop1 = NULL;
   priv->desktop2 = NULL;
 
-  g_free (data);
-
-  mutter_plugin_effect_completed (plugin, actor_for_cb,
-                                  MUTTER_PLUGIN_SWITCH_WORKSPACE);
+  meta_plugin_switch_workspace_completed (plugin);
 }
 
 static void
-switch_workspace (MutterPlugin *plugin,
-                  const GList **actors, gint from, gint to,
+switch_workspace (MetaPlugin *plugin,
+                  gint from, gint to,
                   MetaMotionDirection direction)
 {
-  MutterDefaultPluginPrivate *priv = MUTTER_DEFAULT_PLUGIN (plugin)->priv;
+  MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
   GList        *l;
-  gint          n_workspaces;
   ClutterActor *workspace0  = clutter_group_new ();
   ClutterActor *workspace1  = clutter_group_new ();
   ClutterActor *stage;
   int           screen_width, screen_height;
-  MetaScreen   *screen = mutter_plugin_get_screen (plugin);
-  SwitchWorkspaceData *sw_data = g_new (SwitchWorkspaceData, 1);
   ClutterAnimation *animation;
 
-  sw_data->plugin = plugin;
-  sw_data->actors = actors;
+  stage = meta_plugin_get_stage (plugin);
 
-  stage = mutter_plugin_get_stage (plugin);
-
-  mutter_plugin_query_screen_size (plugin,
+  meta_plugin_query_screen_size (plugin,
 					      &screen_width,
 					      &screen_height);
   clutter_actor_set_anchor_point (workspace1,
@@ -355,32 +344,29 @@ switch_workspace (MutterPlugin *plugin,
 
   if (from == to)
     {
-      mutter_plugin_effect_completed (plugin, NULL,
-                           MUTTER_PLUGIN_SWITCH_WORKSPACE);
+      meta_plugin_switch_workspace_completed (plugin);
       return;
     }
 
-  n_workspaces = meta_screen_get_n_workspaces (screen);
-
-  l = g_list_last (*((GList**) actors));
+  l = g_list_last (meta_plugin_get_window_actors (plugin));
 
   while (l)
     {
-      MutterWindow *mc_window	= l->data;
-      ActorPrivate *apriv	= get_actor_private (mc_window);
-      ClutterActor *window	= CLUTTER_ACTOR (mc_window);
-      gint          win_workspace;
+      MetaWindowActor *window_actor = l->data;
+      ActorPrivate    *apriv	    = get_actor_private (window_actor);
+      ClutterActor    *actor	    = CLUTTER_ACTOR (window_actor);
+      gint             win_workspace;
 
-      win_workspace = mutter_window_get_workspace (mc_window);
+      win_workspace = meta_window_actor_get_workspace (window_actor);
 
       if (win_workspace == to || win_workspace == from)
         {
-          apriv->orig_parent = clutter_actor_get_parent (window);
+          apriv->orig_parent = clutter_actor_get_parent (actor);
 
-          clutter_actor_reparent (window,
+          clutter_actor_reparent (actor,
 				  win_workspace == to ? workspace1 : workspace0);
-          clutter_actor_show_all (window);
-          clutter_actor_raise_top (window);
+          clutter_actor_show_all (actor);
+          clutter_actor_raise_top (actor);
         }
       else if (win_workspace < 0)
         {
@@ -390,14 +376,13 @@ switch_workspace (MutterPlugin *plugin,
       else
         {
           /* Window on some other desktop */
-          clutter_actor_hide (window);
+          clutter_actor_hide (actor);
           apriv->orig_parent = NULL;
         }
 
       l = l->prev;
     }
 
-  priv->actors   = (GList **)actors;
   priv->desktop1 = workspace0;
   priv->desktop2 = workspace1;
 
@@ -410,7 +395,7 @@ switch_workspace (MutterPlugin *plugin,
   g_signal_connect (priv->tml_switch_workspace1,
                     "completed",
                     G_CALLBACK (on_switch_workspace_effect_complete),
-                    sw_data);
+                    plugin);
 
   animation = clutter_actor_animate (workspace1, CLUTTER_EASE_IN_SINE,
                                      SWITCH_TIMEOUT,
@@ -432,11 +417,11 @@ on_minimize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data
    * Must reverse the effect of the effect; must hide it first to ensure
    * that the restoration will not be visible.
    */
-  MutterPlugin *plugin = data->plugin;
+  MetaPlugin *plugin = data->plugin;
   ActorPrivate *apriv;
-  MutterWindow *mc_window = MUTTER_WINDOW (data->actor);
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (data->actor);
 
-  apriv = get_actor_private (MUTTER_WINDOW (data->actor));
+  apriv = get_actor_private (META_WINDOW_ACTOR (data->actor));
   apriv->tml_minimize = NULL;
 
   clutter_actor_hide (data->actor);
@@ -448,8 +433,7 @@ on_minimize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data
                                                 CLUTTER_GRAVITY_NORTH_WEST);
 
   /* Now notify the manager that we are done with this effect */
-  mutter_plugin_effect_completed (plugin, mc_window,
-                                  MUTTER_PLUGIN_MINIMIZE);
+  meta_plugin_minimize_completed (plugin, window_actor);
 
   g_free (data);
 }
@@ -459,18 +443,20 @@ on_minimize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data
  * completion).
  */
 static void
-minimize (MutterPlugin *plugin, MutterWindow *mc_window)
+minimize (MetaPlugin *plugin, MetaWindowActor *window_actor)
 {
-  MetaCompWindowType          type;
-  ClutterActor               *actor  = CLUTTER_ACTOR (mc_window);
+  MetaWindowType type;
+  MetaWindow *meta_window = meta_window_actor_get_meta_window (window_actor);
+  ClutterActor *actor  = CLUTTER_ACTOR (window_actor);
 
-  type = mutter_window_get_window_type (mc_window);
 
-  if (type == META_COMP_WINDOW_NORMAL)
+  type = meta_window_get_window_type (meta_window);
+
+  if (type == META_WINDOW_NORMAL)
     {
       ClutterAnimation *animation;
       EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (mc_window);
+      ActorPrivate *apriv = get_actor_private (window_actor);
 
       apriv->is_minimized = TRUE;
 
@@ -492,8 +478,7 @@ minimize (MutterPlugin *plugin, MutterWindow *mc_window)
 
     }
   else
-    mutter_plugin_effect_completed (plugin, mc_window,
-                                    MUTTER_PLUGIN_MINIMIZE);
+    meta_plugin_minimize_completed (plugin, window_actor);
 }
 
 /*
@@ -506,9 +491,9 @@ on_maximize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data
   /*
    * Must reverse the effect of the effect.
    */
-  MutterPlugin * plugin = data->plugin;
-  MutterWindow  *mc_window = MUTTER_WINDOW (data->actor);
-  ActorPrivate  *apriv     = get_actor_private (mc_window);
+  MetaPlugin *plugin = data->plugin;
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (data->actor);
+  ActorPrivate *apriv = get_actor_private (window_actor);
 
   apriv->tml_maximize = NULL;
 
@@ -518,8 +503,7 @@ on_maximize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data
                                                 CLUTTER_GRAVITY_NORTH_WEST);
 
   /* Now notify the manager that we are done with this effect */
-  mutter_plugin_effect_completed (plugin, mc_window,
-                                  MUTTER_PLUGIN_MAXIMIZE);
+  meta_plugin_maximize_completed (plugin, window_actor);
 
   g_free (data);
 }
@@ -533,25 +517,26 @@ on_maximize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data
  * (Something like a sound would be more appropriate.)
  */
 static void
-maximize (MutterPlugin *plugin,
-          MutterWindow *mc_window,
+maximize (MetaPlugin *plugin,
+          MetaWindowActor *window_actor,
           gint end_x, gint end_y, gint end_width, gint end_height)
 {
-  MetaCompWindowType  type;
-  ClutterActor	     *actor = CLUTTER_ACTOR (mc_window);
+  MetaWindowType type;
+  ClutterActor *actor = CLUTTER_ACTOR (window_actor);
+  MetaWindow *meta_window = meta_window_actor_get_meta_window (window_actor);
 
   gdouble  scale_x    = 1.0;
   gdouble  scale_y    = 1.0;
   gfloat   anchor_x   = 0;
   gfloat   anchor_y   = 0;
 
-  type = mutter_window_get_window_type (mc_window);
+  type = meta_window_get_window_type (meta_window);
 
-  if (type == META_COMP_WINDOW_NORMAL)
+  if (type == META_WINDOW_NORMAL)
     {
       ClutterAnimation *animation;
       EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (mc_window);
+      ActorPrivate *apriv = get_actor_private (window_actor);
       gfloat width, height;
       gfloat x, y;
 
@@ -589,8 +574,7 @@ maximize (MutterPlugin *plugin,
       return;
     }
 
-  mutter_plugin_effect_completed (plugin, mc_window,
-                                  MUTTER_PLUGIN_MAXIMIZE);
+  meta_plugin_maximize_completed (plugin, window_actor);
 }
 
 /*
@@ -599,22 +583,22 @@ maximize (MutterPlugin *plugin,
  * (Just a skeleton code.)
  */
 static void
-unmaximize (MutterPlugin *plugin,
-            MutterWindow *mc_window,
+unmaximize (MetaPlugin *plugin,
+            MetaWindowActor *window_actor,
             gint end_x, gint end_y, gint end_width, gint end_height)
 {
-  MetaCompWindowType type = mutter_window_get_window_type (mc_window);
+  MetaWindow *meta_window = meta_window_actor_get_meta_window (window_actor);
+  MetaWindowType type = meta_window_get_window_type (meta_window);
 
-  if (type == META_COMP_WINDOW_NORMAL)
+  if (type == META_WINDOW_NORMAL)
     {
-      ActorPrivate *apriv = get_actor_private (mc_window);
+      ActorPrivate *apriv = get_actor_private (window_actor);
 
       apriv->is_maximized = FALSE;
     }
 
   /* Do this conditionally, if the effect requires completion callback. */
-  mutter_plugin_effect_completed (plugin, mc_window,
-                                  MUTTER_PLUGIN_UNMAXIMIZE);
+  meta_plugin_unmaximize_completed (plugin, window_actor);
 }
 
 static void
@@ -623,9 +607,9 @@ on_map_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
   /*
    * Must reverse the effect of the effect.
    */
-  MutterPlugin  *plugin = data->plugin;
-  MutterWindow  *mc_window = MUTTER_WINDOW (data->actor);
-  ActorPrivate  *apriv     = get_actor_private (mc_window);
+  MetaPlugin *plugin = data->plugin;
+  MetaWindowActor  *window_actor = META_WINDOW_ACTOR (data->actor);
+  ActorPrivate  *apriv = get_actor_private (window_actor);
 
   apriv->tml_map = NULL;
 
@@ -633,7 +617,7 @@ on_map_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
                                                 CLUTTER_GRAVITY_NORTH_WEST);
 
   /* Now notify the manager that we are done with this effect */
-  mutter_plugin_effect_completed (plugin, mc_window, MUTTER_PLUGIN_MAP);
+  meta_plugin_map_completed (plugin, window_actor);
 
   g_free (data);
 }
@@ -643,18 +627,19 @@ on_map_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
  * completion).
  */
 static void
-map (MutterPlugin *plugin, MutterWindow *mc_window)
+map (MetaPlugin *plugin, MetaWindowActor *window_actor)
 {
-  MetaCompWindowType  type;
-  ClutterActor       *actor = CLUTTER_ACTOR (mc_window);
+  MetaWindowType type;
+  ClutterActor *actor = CLUTTER_ACTOR (window_actor);
+  MetaWindow *meta_window = meta_window_actor_get_meta_window (window_actor);
 
-  type = mutter_window_get_window_type (mc_window);
+  type = meta_window_get_window_type (meta_window);
 
-  if (type == META_COMP_WINDOW_NORMAL)
+  if (type == META_WINDOW_NORMAL)
     {
       ClutterAnimation *animation;
       EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (mc_window);
+      ActorPrivate *apriv = get_actor_private (window_actor);
 
       clutter_actor_move_anchor_point_from_gravity (actor,
                                                     CLUTTER_GRAVITY_CENTER);
@@ -679,8 +664,7 @@ map (MutterPlugin *plugin, MutterWindow *mc_window)
 
     }
   else
-    mutter_plugin_effect_completed (plugin, mc_window,
-                                    MUTTER_PLUGIN_MAP);
+    meta_plugin_map_completed (plugin, window_actor);
 }
 
 /*
@@ -690,32 +674,32 @@ map (MutterPlugin *plugin, MutterWindow *mc_window)
 static void
 on_destroy_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
 {
-  MutterPlugin *plugin = data->plugin;
-  MutterWindow *mc_window = MUTTER_WINDOW (data->actor);
-  ActorPrivate *apriv = get_actor_private (mc_window);
+  MetaPlugin *plugin = data->plugin;
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (data->actor);
+  ActorPrivate *apriv = get_actor_private (window_actor);
 
   apriv->tml_destroy = NULL;
 
-  mutter_plugin_effect_completed (plugin, mc_window,
-                                  MUTTER_PLUGIN_DESTROY);
+  meta_plugin_destroy_completed (plugin, window_actor);
 }
 
 /*
  * Simple TV-out like effect.
  */
 static void
-destroy (MutterPlugin *plugin, MutterWindow *mc_window)
+destroy (MetaPlugin *plugin, MetaWindowActor *window_actor)
 {
-  MetaCompWindowType   type;
-  ClutterActor	      *actor = CLUTTER_ACTOR (mc_window);
+  MetaWindowType type;
+  ClutterActor *actor = CLUTTER_ACTOR (window_actor);
+  MetaWindow *meta_window = meta_window_actor_get_meta_window (window_actor);
 
-  type = mutter_window_get_window_type (mc_window);
+  type = meta_window_get_window_type (meta_window);
 
-  if (type == META_COMP_WINDOW_NORMAL)
+  if (type == META_WINDOW_NORMAL)
     {
       ClutterAnimation *animation;
       EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (mc_window);
+      ActorPrivate *apriv = get_actor_private (window_actor);
 
       clutter_actor_move_anchor_point_from_gravity (actor,
                                                     CLUTTER_GRAVITY_CENTER);
@@ -734,64 +718,59 @@ destroy (MutterPlugin *plugin, MutterWindow *mc_window)
                         data);
     }
   else
-    mutter_plugin_effect_completed (plugin, mc_window,
-                                    MUTTER_PLUGIN_DESTROY);
+    meta_plugin_destroy_completed (plugin, window_actor);
 }
 
 static void
-kill_effect (MutterPlugin *plugin, MutterWindow *mc_window, gulong event)
+kill_switch_workspace (MetaPlugin     *plugin)
+{
+  MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
+
+  if (priv->tml_switch_workspace1)
+    {
+      clutter_timeline_stop (priv->tml_switch_workspace1);
+      clutter_timeline_stop (priv->tml_switch_workspace2);
+      g_signal_emit_by_name (priv->tml_switch_workspace1, "completed", NULL);
+    }
+}
+
+static void
+kill_window_effects (MetaPlugin      *plugin,
+                     MetaWindowActor *window_actor)
 {
   ActorPrivate *apriv;
 
-  if (event & MUTTER_PLUGIN_SWITCH_WORKSPACE)
-    {
-      MutterDefaultPluginPrivate *priv = MUTTER_DEFAULT_PLUGIN (plugin)->priv;
+  apriv = get_actor_private (window_actor);
 
-      if (priv->tml_switch_workspace1)
-        {
-          clutter_timeline_stop (priv->tml_switch_workspace1);
-          clutter_timeline_stop (priv->tml_switch_workspace2);
-          g_signal_emit_by_name (priv->tml_switch_workspace1, "completed", NULL);
-        }
-
-      if (!(event & ~MUTTER_PLUGIN_SWITCH_WORKSPACE))
-        {
-          /* Workspace switch only, nothing more to do */
-          return;
-        }
-    }
-
-  apriv = get_actor_private (mc_window);
-
-  if ((event & MUTTER_PLUGIN_MINIMIZE) && apriv->tml_minimize)
+  if (apriv->tml_minimize)
     {
       clutter_timeline_stop (apriv->tml_minimize);
       g_signal_emit_by_name (apriv->tml_minimize, "completed", NULL);
     }
 
-  if ((event & MUTTER_PLUGIN_MAXIMIZE) && apriv->tml_maximize)
+  if (apriv->tml_maximize)
     {
       clutter_timeline_stop (apriv->tml_maximize);
       g_signal_emit_by_name (apriv->tml_maximize, "completed", NULL);
     }
 
-  if ((event & MUTTER_PLUGIN_MAP) && apriv->tml_map)
+  if (apriv->tml_map)
     {
       clutter_timeline_stop (apriv->tml_map);
       g_signal_emit_by_name (apriv->tml_map, "completed", NULL);
     }
 
-  if ((event & MUTTER_PLUGIN_DESTROY) && apriv->tml_destroy)
+  if (apriv->tml_destroy)
     {
       clutter_timeline_stop (apriv->tml_destroy);
       g_signal_emit_by_name (apriv->tml_destroy, "completed", NULL);
     }
 }
 
-static const MutterPluginInfo *
-plugin_info (MutterPlugin *plugin)
+static const MetaPluginInfo *
+plugin_info (MetaPlugin *plugin)
 {
-  MutterDefaultPluginPrivate *priv = MUTTER_DEFAULT_PLUGIN (plugin)->priv;
+  MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
 
   return &priv->info;
 }

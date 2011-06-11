@@ -40,10 +40,10 @@
 
 #include <config.h>
 #include "window-props.h"
-#include "errors.h"
+#include <meta/errors.h>
 #include "xprops.h"
-#include "frame-private.h"
-#include "group.h"
+#include "frame.h"
+#include <meta/group.h>
 #include <X11/Xatom.h>
 #include <unistd.h>
 #include <string.h>
@@ -442,7 +442,7 @@ set_title_text (MetaWindow  *window,
       XDeleteProperty (window->display->xdisplay,
                        window->xwindow,
                        atom);
-      meta_error_trap_pop (window->display, FALSE);
+      meta_error_trap_pop (window->display);
     }
 
   return modified;
@@ -520,6 +520,49 @@ reload_wm_name (MetaWindow    *window,
   else
     {
       set_window_title (window, NULL);
+    }
+}
+
+static void
+reload_mutter_hints (MetaWindow    *window,
+                     MetaPropValue *value,
+                     gboolean       initial)
+{
+  if (value->type != META_PROP_VALUE_INVALID)
+    {
+      char     *new_hints = value->v.str;
+      char     *old_hints = window->mutter_hints;
+      gboolean  changed   = FALSE;
+
+      if (new_hints)
+        {
+          if (!old_hints || strcmp (new_hints, old_hints))
+            changed = TRUE;
+        }
+      else
+        {
+          if (old_hints)
+            changed = TRUE;
+        }
+
+      if (changed)
+        {
+          g_free (old_hints);
+
+          if (new_hints)
+            window->mutter_hints = g_strdup (new_hints);
+          else
+            window->mutter_hints = NULL;
+
+          g_object_notify (G_OBJECT (window), "mutter-hints");
+        }
+    }
+  else if (window->mutter_hints)
+    {
+      g_free (window->mutter_hints);
+      window->mutter_hints = NULL;
+
+      g_object_notify (G_OBJECT (window), "mutter-hints");
     }
 }
 
@@ -641,7 +684,7 @@ reload_net_wm_state (MetaWindow    *window,
       else if (value->v.atom_list.atoms[i] == window->display->atom__NET_WM_STATE_DEMANDS_ATTENTION)
         window->wm_state_demands_attention = TRUE;
       else if (value->v.atom_list.atoms[i] == window->display->atom__NET_WM_STATE_STICKY)
-        window->on_all_workspaces = TRUE;
+        window->on_all_workspaces_requested = TRUE;
 
       ++i;
     }
@@ -650,6 +693,7 @@ reload_net_wm_state (MetaWindow    *window,
                 window->desc);
 
   meta_window_recalc_window_type (window);
+  meta_window_recalc_features (window);
 }
 
 static void
@@ -1422,6 +1466,9 @@ reload_transient_for (MetaWindow    *window,
                       MetaPropValue *value,
                       gboolean       initial)
 {
+  if (window->has_focus && window->xtransient_for != None)
+    meta_window_propagate_focus_appearance (window, FALSE);
+
   window->xtransient_for = None;
   
   if (value->type != META_PROP_VALUE_INVALID)
@@ -1465,6 +1512,9 @@ reload_transient_for (MetaWindow    *window,
 
   if (!window->constructing && !window->override_redirect)
     meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
+
+  if (window->has_focus && window->xtransient_for != None)
+    meta_window_propagate_focus_appearance (window, TRUE);
 }
 
 /**
@@ -1506,6 +1556,7 @@ meta_display_init_window_prop_hooks (MetaDisplay *display)
     { XA_WM_CLASS,                     META_PROP_VALUE_CLASS_HINT, reload_wm_class,        TRUE,  TRUE },
     { display->atom__NET_WM_PID,       META_PROP_VALUE_CARDINAL, reload_net_wm_pid,        TRUE,  TRUE },
     { XA_WM_NAME,                      META_PROP_VALUE_TEXT_PROPERTY, reload_wm_name,      TRUE,  TRUE },
+    { display->atom__MUTTER_HINTS,     META_PROP_VALUE_TEXT_PROPERTY, reload_mutter_hints, TRUE,  TRUE },
     { display->atom__NET_WM_ICON_NAME, META_PROP_VALUE_UTF8,     reload_net_wm_icon_name,  TRUE,  FALSE },
     { XA_WM_ICON_NAME,                 META_PROP_VALUE_TEXT_PROPERTY, reload_wm_icon_name, TRUE,  FALSE },
     { display->atom__NET_WM_DESKTOP,   META_PROP_VALUE_CARDINAL, reload_net_wm_desktop,    TRUE,  FALSE },

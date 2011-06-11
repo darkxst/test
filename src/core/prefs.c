@@ -24,9 +24,10 @@
  */
 
 #include <config.h>
-#include "prefs.h"
+#include <meta/prefs.h>
 #include "ui.h"
-#include "util.h"
+#include <meta/util.h>
+#include "meta-plugin-manager.h"
 #ifdef HAVE_GCONF
 #include <gconf/gconf-client.h>
 #endif
@@ -49,7 +50,6 @@
  */
 #define KEY_TITLEBAR_FONT "/apps/metacity/general/titlebar_font"
 #define KEY_NUM_WORKSPACES "/apps/metacity/general/num_workspaces"
-#define KEY_COMPOSITOR "/apps/metacity/general/compositing_manager"
 #define KEY_GNOME_ACCESSIBILITY "/desktop/gnome/interface/accessibility"
 
 #define KEY_COMMAND_DIRECTORY "/apps/metacity/keybinding_commands"
@@ -66,9 +66,8 @@
 #define KEY_WORKSPACE_NAME_DIRECTORY "/apps/metacity/workspace_names"
 #define KEY_WORKSPACE_NAME_PREFIX "/apps/metacity/workspace_names/name_"
 
-#define KEY_CLUTTER_PLUGINS  "/apps/mutter/general/clutter_plugins"
-
 #define KEY_LIVE_HIDDEN_WINDOWS "/apps/mutter/general/live_hidden_windows"
+#define KEY_WORKSPACES_ONLY_ON_PRIMARY "/apps/mutter/general/workspaces_only_on_primary"
 
 #define KEY_NO_TAB_POPUP "/apps/metacity/general/no_tab_popup"
 
@@ -85,6 +84,7 @@ static MetaVirtualModifier mouse_button_mods = Mod1Mask;
 static MetaFocusMode focus_mode = META_FOCUS_MODE_CLICK;
 static MetaFocusNewWindows focus_new_windows = META_FOCUS_NEW_WINDOWS_SMART;
 static gboolean raise_on_click = TRUE;
+static gboolean attach_modal_dialogs = FALSE;
 static char* current_theme = NULL;
 static int num_workspaces = 4;
 static MetaActionTitlebar action_double_click_titlebar = META_ACTION_TITLEBAR_TOGGLE_MAXIMIZE;
@@ -100,8 +100,8 @@ static gboolean gnome_accessibility = FALSE;
 static gboolean gnome_animations = TRUE;
 static char *cursor_theme = NULL;
 static int   cursor_size = 24;
-static gboolean compositing_manager = FALSE;
 static gboolean resize_with_right_button = FALSE;
+static gboolean edge_tiling = FALSE;
 static gboolean force_fullscreen = TRUE;
 
 static MetaVisualBellType visual_bell_type = META_VISUAL_BELL_FULLSCREEN_FLASH;
@@ -114,10 +114,8 @@ static char *terminal_command = NULL;
 
 static char *workspace_names[MAX_REASONABLE_WORKSPACES] = { NULL, };
 
-static gboolean clutter_plugins_overridden = FALSE;
-static GSList *clutter_plugins = NULL;
-
 static gboolean live_hidden_windows = FALSE;
+static gboolean workspaces_only_on_primary = FALSE;
 
 static gboolean no_tab_popup = FALSE;
 
@@ -146,6 +144,8 @@ static gboolean update_command            (const char  *name,
 static gboolean update_workspace_name     (const char  *name,
                                            const char  *value);
 
+static void notify_new_value (const char *key,
+                              GConfValue *value);
 static void change_notify (GConfClient    *client,
                            guint           cnxn_id,
                            GConfEntry     *entry,
@@ -228,7 +228,12 @@ static GConfEnumStringPair symtab_titlebar_action[] =
     { 0, NULL },
   };
 
-/**
+/*
+ * Note that 'gchar *key' is the first element of all these structures;
+ * we count on that below in key_is_used and do_override.
+ */
+
+/*
  * The details of one preference which is constrained to be
  * one of a small number of string values-- in other words,
  * an enumeration.
@@ -241,21 +246,6 @@ static GConfEnumStringPair symtab_titlebar_action[] =
  * been outweighed by the bugs caused when the ordering of the enum
  * strings got out of sync with the actual enum statement.  Also,
  * there is existing library code to use this kind of symbol tables.
- *
- * Other things we might consider doing to clean this up in the
- * future include:
- *
- *   - most of the keys begin with the same prefix, and perhaps we
- *     could assume it if they don't start with a slash
- *
- *   - there are several cases where a single identifier could be used
- *     to generate an entire entry, and perhaps this could be done
- *     with a macro.  (This would reduce clarity, however, and is
- *     probably a bad thing.)
- *
- *   - these types all begin with a gchar* (and contain a MetaPreference)
- *     and we can factor out the repeated code in the handlers by taking
- *     advantage of this using some kind of union arrangement.
  */
 typedef struct
 {
@@ -368,6 +358,11 @@ static MetaEnumPreference preferences_enum[] =
 
 static MetaBoolPreference preferences_bool[] =
   {
+    { "/apps/mutter/general/attach_modal_dialogs",
+      META_PREF_ATTACH_MODAL_DIALOGS,
+      &attach_modal_dialogs,
+      TRUE,
+    },
     { "/apps/metacity/general/raise_on_click",
       META_PREF_RAISE_ON_CLICK,
       &raise_on_click,
@@ -413,19 +408,24 @@ static MetaBoolPreference preferences_bool[] =
       &gnome_animations,
       TRUE,
     },
-    { "/apps/metacity/general/compositing_manager",
-      META_PREF_COMPOSITING_MANAGER,
-      &compositing_manager,
-      FALSE,
-    },
     { "/apps/metacity/general/resize_with_right_button",
       META_PREF_RESIZE_WITH_RIGHT_BUTTON,
       &resize_with_right_button,
       FALSE,
     },
+    { "/apps/metacity/general/edge_tiling",
+      META_PREF_EDGE_TILING,
+      &edge_tiling,
+      FALSE,
+    },
     { "/apps/mutter/general/live_hidden_windows",
       META_PREF_LIVE_HIDDEN_WINDOWS,
       &live_hidden_windows,
+      FALSE,
+    },
+    { "/apps/mutter/general/workspaces_only_on_primary",
+      META_PREF_WORKSPACES_ONLY_ON_PRIMARY,
+      &workspaces_only_on_primary,
       FALSE,
     },
     { "/apps/metacity/general/no_tab_popup",
@@ -495,6 +495,20 @@ static MetaIntPreference preferences_int[] =
     },
     { NULL, 0, NULL, 0, 0, 0, },
   };
+
+/*
+ * This is used to keep track of preferences that have been
+ * repointed to a different GConf key location; we modify the
+ * preferences arrays directly, but we also need to remember
+ * what we have done to handle subsequent overrides correctly.
+ */
+typedef struct
+{
+  gchar *original_key;
+  gchar *new_key;
+} MetaPrefsOverriddenKey;
+
+static GSList *overridden_keys;
 
 static void
 handle_preference_init_enum (void)
@@ -879,6 +893,10 @@ handle_preference_update_int (const gchar *key, GConfValue *value)
 /* Listeners.                                                               */
 /****************************************************************************/
 
+/**
+ * meta_prefs_add_listener: (skip)
+ *
+ */
 void
 meta_prefs_add_listener (MetaPrefsChangedFunc func,
                          gpointer             data)
@@ -892,6 +910,10 @@ meta_prefs_add_listener (MetaPrefsChangedFunc func,
   listeners = g_list_prepend (listeners, l);
 }
 
+/**
+ * meta_prefs_remove_listener: (skip)
+ *
+ */
 void
 meta_prefs_remove_listener (MetaPrefsChangedFunc func,
                             gpointer             data)
@@ -1056,12 +1078,6 @@ meta_prefs_init (void)
   handle_preference_init_string ();
   handle_preference_init_int ();
 
-  if (!clutter_plugins_overridden)
-    clutter_plugins = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
-                                             GCONF_VALUE_STRING, &err);
-
-  cleanup_error (&err);
-
   /* @@@ Is there any reason we don't do the add_dir here? */
   for (gconf_dir_cursor=gconf_dirs_we_are_interested_in;
        *gconf_dir_cursor!=NULL;
@@ -1094,6 +1110,160 @@ meta_prefs_init (void)
   init_workspace_names ();
 }
 
+/* This count on the key being the first element of the
+ * preference structure */
+static gboolean
+key_is_used (void       *prefs,
+             size_t      pref_size,
+             const char *new_key)
+{
+  void *p = prefs;
+
+  while (TRUE)
+    {
+      char **key = p;
+      if (*key == NULL)
+        break;
+
+      if (strcmp (*key, new_key) == 0)
+        return TRUE;
+
+      p = (guchar *)p + pref_size;
+    }
+
+  return FALSE;
+}
+
+static gboolean
+do_override (void       *prefs,
+             size_t      pref_size,
+             const char *search_key,
+             char       *new_key)
+{
+  void *p = prefs;
+
+  while (TRUE)
+    {
+      char **key = p;
+      if (*key == NULL)
+        break;
+
+      if (strcmp (*key, search_key) == 0)
+        {
+          *key = new_key;
+          return TRUE;
+        }
+
+      p = (guchar *)p + pref_size;
+    }
+
+  return FALSE;
+}
+
+/**
+ * meta_prefs_override_preference_location
+ * @original_key: the normal Metacity preference location
+ * @new_key: the Metacity preference location to use instead.
+ *
+ * Substitute a different location to use instead of a standard Metacity
+ * GConf key location. This might be used if a plugin expected a different
+ * value for some preference than the Metacity default. While this function
+ * can be called at any point, this function should generally be called
+ * in a plugin's constructor, rather than in its start() method so the
+ * preference isn't first loaded with one value then changed to another
+ * value.
+ */
+void
+meta_prefs_override_preference_location (const char *original_key,
+                                         const char *new_key)
+{
+  const char *search_key;
+  char *new_key_copy;
+  gboolean found;
+  MetaPrefsOverriddenKey *overridden;
+  GSList *tmp;
+
+  /* Merge identical overrides, this isn't an error */
+  for (tmp = overridden_keys; tmp; tmp = tmp->next)
+    {
+      MetaPrefsOverriddenKey *tmp_overridden = tmp->data;
+      if (strcmp (tmp_overridden->original_key, original_key) == 0 &&
+          strcmp (tmp_overridden->new_key, new_key) == 0)
+        return;
+    }
+
+  /* We depend on a unique mapping from GConf key to preference, so
+   * enforce this */
+
+  if (key_is_used (preferences_enum, sizeof(MetaEnumPreference), new_key) ||
+      key_is_used (preferences_bool, sizeof(MetaBoolPreference), new_key) ||
+      key_is_used (preferences_string, sizeof(MetaStringPreference), new_key) ||
+      key_is_used (preferences_int, sizeof(MetaIntPreference), new_key))
+    {
+      meta_warning (_("GConf key %s is already in use and can't be used to override %s\n"),
+                    new_key, original_key);
+
+    }
+
+  new_key_copy = g_strdup (new_key);
+
+  search_key = original_key;
+  overridden = NULL;
+
+  for (tmp = overridden_keys; tmp; tmp = tmp->next)
+    {
+      MetaPrefsOverriddenKey *tmp_overridden = tmp->data;
+      if (strcmp (overridden->original_key, original_key) == 0)
+        {
+          overridden = tmp_overridden;
+          search_key = tmp_overridden->new_key;
+        }
+    }
+
+  found =
+    do_override (preferences_enum, sizeof(MetaEnumPreference), search_key, new_key_copy) ||
+    do_override (preferences_bool, sizeof(MetaBoolPreference), search_key, new_key_copy) ||
+    do_override (preferences_string, sizeof(MetaStringPreference), search_key, new_key_copy) ||
+    do_override (preferences_int, sizeof(MetaIntPreference), search_key, new_key_copy);
+  if (found)
+    {
+      if (overridden)
+        {
+          g_free (overridden->new_key);
+          overridden->new_key = new_key_copy;
+        }
+      else
+        {
+          overridden = g_slice_new (MetaPrefsOverriddenKey);
+          overridden->original_key = g_strdup (original_key);
+          overridden->new_key = new_key_copy;
+        }
+
+#ifdef HAVE_GCONF
+      if (default_client != NULL)
+        {
+          /* We're already initialized, so notify of a change */
+
+          GConfValue *value;
+          GError *err = NULL;
+
+          value = gconf_client_get (default_client, new_key, &err);
+          cleanup_error (&err);
+
+          notify_new_value (new_key, value);
+
+          if (value)
+            gconf_value_free (value);
+        }
+#endif /* HAVE_GCONF */
+    }
+  else
+    {
+      meta_warning (_("Can't override GConf key, %s not found\n"), original_key);
+      g_free (new_key_copy);
+    }
+}
+
 
 /****************************************************************************/
 /* Updates.                                                                 */
@@ -1110,6 +1280,23 @@ gboolean (*preference_update_handler[]) (const gchar*, GConfValue*) = {
 };
 
 static void
+notify_new_value (const char *key,
+                  GConfValue *value)
+{
+  int i = 0;
+
+  /* FIXME: Use MetaGenericPreference and save a bit of code duplication */
+
+  while (preference_update_handler[i] != NULL)
+    {
+      if (preference_update_handler[i] (key, value))
+        return;
+
+      i++;
+    }
+}
+
+static void
 change_notify (GConfClient    *client,
                guint           cnxn_id,
                GConfEntry     *entry,
@@ -1117,25 +1304,13 @@ change_notify (GConfClient    *client,
 {
   const char *key;
   GConfValue *value;
-  gint i=0;
   
   key = gconf_entry_get_key (entry);
   value = gconf_entry_get_value (entry);
 
   /* First, search for a handler that might know what to do. */
 
-  /* FIXME: When this is all working, since the first item in every
-   * array is the gchar* of the key, there's no reason we can't
-   * find the correct record for that key here and save code duplication.
-   */
-
-  while (preference_update_handler[i]!=NULL)
-    {
-      if (preference_update_handler[i] (key, value))
-        goto out; /* Get rid of this eventually */
-
-      i++;
-    }
+  notify_new_value (key, value);
   
   if (g_str_has_prefix (key, KEY_WINDOW_BINDINGS_PREFIX) ||
       g_str_has_prefix (key, KEY_SCREEN_BINDINGS_PREFIX))
@@ -1208,23 +1383,6 @@ change_notify (GConfClient    *client,
   else if (g_str_equal (key, KEY_OVERLAY_KEY))
     {
       queue_changed (META_PREF_KEYBINDINGS);
-    }
-  else if (g_str_equal (key, KEY_CLUTTER_PLUGINS) && !clutter_plugins_overridden)
-    {
-      GError *err = NULL;
-      GSList *l;
-
-      l = gconf_client_get_list (default_client, KEY_CLUTTER_PLUGINS,
-                                 GCONF_VALUE_STRING, &err);
-
-      if (!l)
-        {
-          cleanup_error (&err);
-          goto out;
-        }
-
-      clutter_plugins = l;
-      queue_changed (META_PREF_CLUTTER_PLUGINS);
     }
   else
     {
@@ -1309,6 +1467,12 @@ MetaFocusNewWindows
 meta_prefs_get_focus_new_windows (void)
 {
   return focus_new_windows;
+}
+
+gboolean
+meta_prefs_get_attach_modal_dialogs (void)
+{
+  return attach_modal_dialogs;
 }
 
 gboolean
@@ -1732,6 +1896,9 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_FOCUS_NEW_WINDOWS:
       return "FOCUS_NEW_WINDOWS";
 
+    case META_PREF_ATTACH_MODAL_DIALOGS:
+      return "ATTACH_MODAL_DIALOGS";
+
     case META_PREF_RAISE_ON_CLICK:
       return "RAISE_ON_CLICK";
       
@@ -1801,20 +1968,20 @@ meta_preference_to_string (MetaPreference pref)
     case META_PREF_CURSOR_SIZE:
       return "CURSOR_SIZE";
 
-    case META_PREF_COMPOSITING_MANAGER:
-      return "COMPOSITING_MANAGER";
-
     case META_PREF_RESIZE_WITH_RIGHT_BUTTON:
       return "RESIZE_WITH_RIGHT_BUTTON";
+
+    case META_PREF_EDGE_TILING:
+      return "EDGE_TILING";
 
     case META_PREF_FORCE_FULLSCREEN:
       return "FORCE_FULLSCREEN";
 
-    case META_PREF_CLUTTER_PLUGINS:
-      return "CLUTTER_PLUGINS";
-
     case META_PREF_LIVE_HIDDEN_WINDOWS:
       return "LIVE_HIDDEN_WINDOWS";
+
+    case META_PREF_WORKSPACES_ONLY_ON_PRIMARY:
+      return "WORKSPACES_ONLY_ON_PRIMARY";
 
     case META_PREF_NO_TAB_POPUP:
       return "NO_TAB_POPUP";
@@ -1912,6 +2079,8 @@ init_bindings (void)
   GConfValue *value;
   GHashTable *to_update;
 
+  g_assert (G_N_ELEMENTS (key_bindings) == META_KEYBINDING_ACTION_LAST + 1);
+
   to_update = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
 
   for (i = 0; prefix[i]; i++)
@@ -2004,6 +2173,8 @@ init_commands (void)
 static void
 init_workspace_names (void)
 {
+  int i;
+
 #ifdef HAVE_GCONF
   GSList *list, *l;
   const char *str_val;
@@ -2022,14 +2193,14 @@ init_workspace_names (void)
       gconf_entry_free (entry);
     }
   g_slist_free (list);
-#else
-  int i;
+#endif /* HAVE_GCONF */
+
   for (i = 0; i < MAX_REASONABLE_WORKSPACES; i++)
-    workspace_names[i] = g_strdup_printf (_("Workspace %d"), i + 1);
+    if (workspace_names[i] == NULL)
+      workspace_names[i] = g_strdup_printf (_("Workspace %d"), i + 1);
 
   meta_topic (META_DEBUG_PREFS,
               "Initialized workspace names\n");
-#endif /* HAVE_GCONF */
 }
 
 static gboolean
@@ -2715,6 +2886,12 @@ meta_prefs_get_gnome_animations ()
   return gnome_animations;
 }
 
+gboolean
+meta_prefs_get_edge_tiling ()
+{
+  return edge_tiling;
+}
+
 MetaKeyBindingAction
 meta_prefs_get_keybinding_action (const char *name)
 {
@@ -2776,12 +2953,6 @@ meta_prefs_get_window_binding (const char          *name,
   g_assert_not_reached ();
 }
 
-gboolean
-meta_prefs_get_compositing_manager (void)
-{
-  return compositing_manager;
-}
-
 guint
 meta_prefs_get_mouse_button_resize (void)
 {
@@ -2798,69 +2969,6 @@ gboolean
 meta_prefs_get_force_fullscreen (void)
 {
   return force_fullscreen;
-}
-
-void
-meta_prefs_set_compositing_manager (gboolean whether)
-{
-#ifdef HAVE_GCONF
-  GError *err = NULL;
-
-  gconf_client_set_bool (default_client,
-                         KEY_COMPOSITOR,
-                         whether,
-                         &err);
-
-  if (err)
-    {
-      meta_warning (_("Error setting compositor status: %s\n"),
-                    err->message);
-      g_error_free (err);
-    }
-#else
-  compositing_manager = whether;
-#endif
-}
-
-GSList *
-meta_prefs_get_clutter_plugins (void)
-{
-  return clutter_plugins;
-}
-
-void
-meta_prefs_set_clutter_plugins (GSList *list)
-{
-#ifdef HAVE_GCONF
-  GError *err = NULL;
-
-  gconf_client_set_list (default_client,
-                         KEY_CLUTTER_PLUGINS,
-                         GCONF_VALUE_STRING,
-                         list,
-                         &err);
-
-  if (err)
-    {
-      meta_warning (_("Error setting clutter plugin list: %s\n"),
-                    err->message);
-      g_error_free (err);
-    }
-#endif
-}
-
-void
-meta_prefs_override_clutter_plugins (GSList *list)
-{
-  GSList *l;
-
-  clutter_plugins_overridden = TRUE;
-  clutter_plugins = NULL;
-
-  for (l = list; l; l = l->next)
-    clutter_plugins = g_slist_prepend (clutter_plugins, g_strdup(l->data));
-
-  clutter_plugins = g_slist_reverse (clutter_plugins);
 }
 
 gboolean
@@ -2896,6 +3004,13 @@ meta_prefs_set_live_hidden_windows (gboolean whether)
 }
 
 gboolean
+meta_prefs_get_workspaces_only_on_primary (void)
+{
+  return workspaces_only_on_primary;
+}
+
+
+gboolean
 meta_prefs_get_no_tab_popup (void)
 {
   return no_tab_popup;
@@ -2921,12 +3036,6 @@ meta_prefs_set_no_tab_popup (gboolean whether)
 #else
   no_tab_popup = whether;
 #endif
-}
-
-void
-meta_prefs_override_no_tab_popup (gboolean whether)
-{
-  no_tab_popup = whether;
 }
 
 #ifndef HAVE_GCONF

@@ -52,10 +52,9 @@ get_pixbuf (void)
            last_grab_width, last_grab_height);
 #endif
   
-  screenshot = gdk_pixbuf_get_from_drawable (NULL, gdk_get_default_root_window (),
-                                             NULL,
-                                             last_grab_x, last_grab_y, 0, 0,
-                                             last_grab_width, last_grab_height);
+  screenshot = gdk_pixbuf_get_from_window (gdk_get_default_root_window (),
+                                           last_grab_x, last_grab_y,
+                                           last_grab_width, last_grab_height);
 
   if (screenshot == NULL)
     {
@@ -76,14 +75,17 @@ get_pixbuf (void)
 static gboolean
 regrab_idle (GtkWidget *image)
 {
+  GtkAllocation allocation;
   GdkPixbuf *magnified;
-  
-  if (image->allocation.width != last_grab_allocation.width ||
-      image->allocation.height != last_grab_allocation.height)
+
+  gtk_widget_get_allocation (image, &allocation);
+
+  if (allocation.width != last_grab_allocation.width ||
+      allocation.height != last_grab_allocation.height)
     {
-      last_grab_width = rint (image->allocation.width / width_factor);
-      last_grab_height = rint (image->allocation.height / height_factor);
-      last_grab_allocation = image->allocation;
+      last_grab_width = rint (allocation.width / width_factor);
+      last_grab_height = rint (allocation.height / height_factor);
+      last_grab_allocation = allocation;
       
       magnified = get_pixbuf ();
 
@@ -188,7 +190,7 @@ key_press (GtkWidget   *invisible,
            GdkEventKey *event,
            gpointer     data)
 {  
-  if (event->keyval == GDK_Escape)
+  if (event->keyval == GDK_KEY_Escape)
     {
       shutdown_grab ();
 
@@ -224,6 +226,8 @@ mouse_press (GtkWidget      *invisible,
 static void
 begin_area_grab (void)
 {
+  GdkWindow *window;
+
   if (grab_widget == NULL)
     {
       grab_widget = gtk_invisible_new ();
@@ -234,7 +238,9 @@ begin_area_grab (void)
       gtk_widget_show (grab_widget);
     }
 
-  if (gdk_keyboard_grab (grab_widget->window,
+  window = gtk_widget_get_window (grab_widget);
+
+  if (gdk_keyboard_grab (window,
                          FALSE,
                          gtk_get_current_event_time ()) != GDK_GRAB_SUCCESS)
     {
@@ -242,7 +248,7 @@ begin_area_grab (void)
       return;
     }
   
-  if (gdk_pointer_grab (grab_widget->window,
+  if (gdk_pointer_grab (window,
                         FALSE,
                         GDK_BUTTON_RELEASE_MASK | GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK,
                         NULL,

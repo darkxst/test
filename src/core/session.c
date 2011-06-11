@@ -39,12 +39,6 @@ meta_session_init (const char *client_id,
   meta_topic (META_DEBUG_SM, "Compiled without session management support\n");
 }
 
-void
-meta_session_shutdown (void)
-{
-  /* nothing */
-}
-
 const MetaWindowSessionInfo*
 meta_window_lookup_saved_state (MetaWindow *window)
 {
@@ -69,10 +63,10 @@ meta_window_release_saved_state (const MetaWindowSessionInfo *info)
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "main.h"
-#include "util.h"
+#include <meta/main.h>
+#include <meta/util.h>
 #include "display-private.h"
-#include "workspace.h"
+#include <meta/workspace.h>
 
 static void ice_io_error_handler (IceConn connection);
 
@@ -307,15 +301,23 @@ meta_session_init (const char *previous_client_id,
     SmProp prop1, prop2, prop3, prop4, prop5, prop6, *props[6];
     SmPropValue prop1val, prop2val, prop3val, prop4val, prop5val, prop6val;
     char pid[32];
-    char hint = SmRestartImmediately;
+    /* Historically, this was SmRestartImmediately, which made sense
+     * for a stateless window manager, but we don't really control
+     * what embedders do, and it's all around better if gnome-session
+     * handles this.
+     */
+    char hint = SmRestartIfRunning;
     char priority = 20; /* low to run before other apps */
-    
+    const char *prgname;
+
+    prgname = g_get_prgname ();
+
     prop1.name = SmProgram;
     prop1.type = SmARRAY8;
     prop1.num_vals = 1;
     prop1.vals = &prop1val;
-    prop1val.value = "mutter";
-    prop1val.length = strlen ("mutter");
+    prop1val.value = (char *)prgname;
+    prop1val.length = strlen (prgname);
 
     /* twm sets getuid() for this, but the SM spec plainly
      * says pw_name, twm is on crack
@@ -369,31 +371,6 @@ meta_session_init (const char *previous_client_id,
 
  out:
   g_free (saved_client_id);
-}
-
-void
-meta_session_shutdown (void)
-{
-  /* Change our restart mode to IfRunning */
-  
-  SmProp prop1;
-  SmPropValue prop1val;
-  SmProp *props[1];
-  char hint = SmRestartIfRunning;
-
-  if (session_connection == NULL)
-    return;
-  
-  prop1.name = SmRestartStyleHint;
-  prop1.type = SmCARD8;
-  prop1.num_vals = 1;
-  prop1.vals = &prop1val;
-  prop1val.value = &hint;
-  prop1val.length = 1;
-    
-  props[0] = &prop1;
-  
-  SmcSetProperties (session_connection, 1, props);
 }
 
 static void
@@ -544,9 +521,16 @@ save_yourself_callback (SmcConn   smc_conn,
 static void
 die_callback (SmcConn smc_conn, SmPointer client_data)
 {
-  meta_topic (META_DEBUG_SM, "Exiting at request of session manager\n");
+  meta_topic (META_DEBUG_SM, "Disconnecting from session manager");
   disconnect ();
-  meta_quit (META_EXIT_SUCCESS);
+  /* We don't actually exit here - we will simply go away with the X
+   * server on logout, when we lose the X connection and libx11 kills
+   * us.  It looks like *crap* on logout if the user sees their
+   * windows lose the decorations, etc.
+   *
+   * Anything that wants us to go away outside of session management
+   * can use kill().
+   */
 }
 
 static void
@@ -592,6 +576,9 @@ set_clone_restart_commands (void)
   char *discardv[10];
   int i;
   SmProp prop1, prop2, prop3, *props[3];
+  const char *prgname;
+
+  prgname = g_get_prgname ();
   
   /* Restart (use same client ID) */
   
@@ -601,7 +588,7 @@ set_clone_restart_commands (void)
   g_return_if_fail (client_id);
   
   i = 0;
-  restartv[i] = "mutter";
+  restartv[i] = (char *)prgname;
   ++i;
   restartv[i] = "--sm-client-id";
   ++i;
@@ -622,7 +609,7 @@ set_clone_restart_commands (void)
   /* Clone (no client ID) */
   
   i = 0;
-  clonev[i] = "mutter";
+  clonev[i] = (char *)prgname;
   ++i;
   clonev[i] = NULL;
 
@@ -952,7 +939,7 @@ save_state (void)
           g_free (title);
               
           /* Sticky */
-          if (window->on_all_workspaces)
+          if (window->on_all_workspaces_requested)
             fputs ("    <sticky/>\n", outfile);
 
           /* Minimized */
@@ -1823,7 +1810,7 @@ warn_about_lame_clients_and_finish_interact (gboolean shutdown)
                            "and will have to be restarted manually next time "
                            "you log in."),
                          "240",
-                         meta_screen_get_screen_number (meta_get_display()->active_screen),
+                         meta_get_display()->active_screen->screen_name,
                          NULL, NULL,
                          None,
                          columns,

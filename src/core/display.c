@@ -30,23 +30,25 @@
  * The display is represented as a MetaDisplay struct.
  */
 
+#define _XOPEN_SOURCE 600 /* for gethostname() */
+
 #include <config.h>
 #include "display-private.h"
-#include "util.h"
-#include "main.h"
+#include <meta/util.h>
+#include <meta/main.h>
 #include "screen-private.h"
 #include "window-private.h"
 #include "window-props.h"
 #include "group-props.h"
-#include "frame-private.h"
-#include "errors.h"
+#include "frame.h"
+#include <meta/errors.h>
 #include "keybindings-private.h"
-#include "prefs.h"
+#include <meta/prefs.h>
 #include "resizepopup.h"
 #include "xprops.h"
 #include "workspace-private.h"
 #include "bell.h"
-#include "compositor.h"
+#include <meta/compositor.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #ifdef HAVE_SOLARIS_XINERAMA
@@ -72,6 +74,7 @@
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xfixes.h>
 #include <string.h>
+#include <unistd.h>
 
 #define GRAB_OP_IS_WINDOW_SWITCH(g)                     \
         (g == META_GRAB_OP_KEYBOARD_TABBING_NORMAL  ||  \
@@ -344,7 +347,7 @@ sn_error_trap_pop (SnDisplay *sn_display,
   MetaDisplay *display;
   display = meta_display_for_x_display (xdisplay);
   if (display != NULL)
-    meta_error_trap_pop (display, FALSE);
+    meta_error_trap_pop (display);
 }
 #endif
 
@@ -385,26 +388,6 @@ enable_compositor (MetaDisplay *display,
 }
 
 static void
-disable_compositor (MetaDisplay *display)
-{
-  GSList *list;
-  
-  if (!display->compositor)
-    return;
-  
-  for (list = display->screens; list != NULL; list = list->next)
-    {
-      MetaScreen *screen = list->data;
-      
-      meta_compositor_unmanage_screen (screen->display->compositor,
-				       screen);
-    }
-  
-  meta_compositor_destroy (display->compositor);
-  display->compositor = NULL;
-}
-
-static void
 meta_display_init (MetaDisplay *disp)
 {
   /* Some stuff could go in here that's currently in _open,
@@ -429,11 +412,12 @@ meta_display_open (void)
   GSList *tmp;
   int i;
   guint32 timestamp;
+  char buf[257];
 
   /* A list of all atom names, so that we can intern them in one go. */
   char *atom_names[] = {
 #define item(x) #x,
-#include "atomnames.h"
+#include <meta/atomnames.h>
 #undef item
   };
   Atom atoms[G_N_ELEMENTS(atom_names)];
@@ -463,6 +447,11 @@ meta_display_open (void)
    */
   the_display->name = g_strdup (XDisplayName (NULL));
   the_display->xdisplay = xdisplay;
+  if (gethostname (buf, sizeof(buf)-1) == 0)
+    {
+      buf[sizeof(buf)-1] = '\0';
+      the_display->hostname = g_strdup (buf);
+    }
   the_display->error_trap_synced_at_last_pop = TRUE;
   the_display->error_traps = 0;
   the_display->error_trap_handler = NULL;
@@ -501,7 +490,7 @@ meta_display_open (void)
   {
     int i = 0;    
 #define item(x) the_display->atom_##x = atoms[i++];
-#include "atomnames.h"
+#include <meta/atomnames.h>
 #undef item
   }
 
@@ -564,6 +553,7 @@ meta_display_open (void)
   the_display->grab_window = NULL;
   the_display->grab_screen = NULL;
   the_display->grab_resize_popup = NULL;
+  the_display->grab_tile_mode = META_TILE_NONE;
 
   the_display->grab_edge_resistance_data = NULL;
 
@@ -830,8 +820,7 @@ meta_display_open (void)
   /* We don't composite the windows here because they will be composited 
      faster with the call to meta_screen_manage_all_windows further down 
      the code */
-  if (1) /* meta_prefs_get_compositing_manager ()) FIXME */
-    enable_compositor (the_display, FALSE);
+  enable_compositor (the_display, FALSE);
    
   meta_display_grab (the_display);
   
@@ -881,7 +870,7 @@ meta_display_open (void)
                                                   timestamp);
       }
 
-    meta_error_trap_pop (the_display, FALSE);
+    meta_error_trap_pop (the_display);
   }
   
   meta_display_ungrab (the_display);  
@@ -1090,7 +1079,7 @@ meta_display_screen_for_xwindow (MetaDisplay *display,
   meta_error_trap_push (display);
   attr.screen = NULL;
   result = XGetWindowAttributes (display->xdisplay, xwindow, &attr);
-  meta_error_trap_pop (display, TRUE);
+  meta_error_trap_pop (display);
 
   /* Note, XGetWindowAttributes is on all kinds of crack
    * and returns 1 on success 0 on failure, rather than Success
@@ -1320,6 +1309,43 @@ meta_grab_op_is_moving (MetaGrabOp op)
     }
 }
 
+/**
+ * meta_display_xserver_time_is_before:
+ * @display: a #MetaDisplay
+ * @time1: An event timestamp
+ * @time2: An event timestamp
+ *
+ * Xserver time can wraparound, thus comparing two timestamps needs to take
+ * this into account. If no wraparound has occurred, this is equivalent to
+ *   time1 < time2
+ * Otherwise, we need to account for the fact that wraparound can occur
+ * and the fact that a timestamp of 0 must be special-cased since it
+ * means "older than anything else".
+ *
+ * Note that this is NOT an equivalent for time1 <= time2; if that's what
+ * you need then you'll need to swap the order of the arguments and negate
+ * the result.
+ */
+gboolean
+meta_display_xserver_time_is_before (MetaDisplay   *display,
+                                     guint32        time1,
+                                     guint32        time2)
+{
+  return XSERVER_TIME_IS_BEFORE(time1, time2);
+}
+
+/**
+ * meta_display_get_last_user_time:
+ * @display: a #MetaDisplay
+ *
+ * Returns: Timestamp of the last user interaction event with a window
+ */
+guint32
+meta_display_get_last_user_time (MetaDisplay *display)
+{
+  return display->last_user_time;
+}
+
 /* Get time of current event, or CurrentTime if none. */
 guint32
 meta_display_get_current_time (MetaDisplay *display)
@@ -1446,7 +1472,7 @@ window_raise_with_delay_callback (void *data)
 				   window->xwindow,
 				   &root, &child,
 				   &root_x, &root_y, &x, &y, &mask);
-      meta_error_trap_pop (window->display, TRUE);
+      meta_error_trap_pop (window->display);
 
       point_in_window = 
         (window->frame && POINT_IN_RECT (root_x, root_y, window->frame->rect)) ||
@@ -1689,7 +1715,8 @@ event_callback (XEvent   *event,
     }
 #endif /* HAVE_SHAPE */
 
-  if (window && ((event->type == KeyPress) || (event->type == ButtonPress)))
+  if (window && !window->override_redirect &&
+      ((event->type == KeyPress) || (event->type == ButtonPress)))
     {
       if (CurrentTime == display->current_time)
         {
@@ -1719,9 +1746,10 @@ event_callback (XEvent   *event,
        * we can get into a confused state. So if a keybinding is
        * handled (because it's one of our hot-keys, or because we are
        * in a keyboard-grabbed mode like moving a window, we don't
-       * want to pass the key event to the compositor at all.
+       * want to pass the key event to the compositor or GTK+ at all.
        */
-      bypass_compositor = meta_display_process_key_event (display, window, event);
+      if (meta_display_process_key_event (display, window, event))
+        filter_out_event = bypass_compositor = TRUE;
       break;
     case ButtonPress:
       if (display->grab_op == META_GRAB_OP_COMPOSITOR)
@@ -2161,7 +2189,7 @@ event_callback (XEvent   *event,
                             window->frame->xwindow);
               meta_error_trap_push (display);
               meta_window_destroy_frame (window->frame->window);
-              meta_error_trap_pop (display, FALSE);
+              meta_error_trap_pop (display);
             }
           else
             {
@@ -2330,7 +2358,7 @@ event_callback (XEvent   *event,
           meta_error_trap_push (display);
           XConfigureWindow (display->xdisplay, event->xconfigurerequest.window,
                             xwcm, &xwc);
-          meta_error_trap_pop (display, FALSE);
+          meta_error_trap_pop (display);
         }
       else
         {
@@ -2497,12 +2525,6 @@ event_callback (XEvent   *event,
                     }
                 }
               else if (event->xclient.message_type ==
-                       display->atom__MUTTER_RESTART_MESSAGE)
-                {
-                  meta_verbose ("Received restart request\n");
-                  meta_restart ();
-                }
-              else if (event->xclient.message_type ==
                        display->atom__MUTTER_RELOAD_THEME_MESSAGE)
                 {
                   meta_verbose ("Received reload theme request\n");
@@ -2595,6 +2617,10 @@ event_callback (XEvent   *event,
                   meta_bell_notify (display, xkb_ev);
                 }
 	      break;
+            case XkbNewKeyboardNotify:
+            case XkbMapNotify:
+              meta_display_process_mapping_event (display, event);
+              break;
 	    }
 	}
 #endif
@@ -3101,7 +3127,7 @@ meta_spew_event (MetaDisplay *display,
         meta_error_trap_push (display);
         str = XGetAtomName (display->xdisplay,
                             event->xproperty.atom);
-        meta_error_trap_pop (display, TRUE);
+        meta_error_trap_pop (display);
 
         if (event->xproperty.state == PropertyNewValue)
           state = "PropertyNewValue";
@@ -3135,7 +3161,7 @@ meta_spew_event (MetaDisplay *display,
         meta_error_trap_push (display);
         str = XGetAtomName (display->xdisplay,
                             event->xclient.message_type);
-        meta_error_trap_pop (display, TRUE);
+        meta_error_trap_pop (display);
         extra = g_strdup_printf ("type: %s format: %d\n",
                                  str ? str : "(unknown atom)",
                                  event->xclient.format);
@@ -3413,7 +3439,7 @@ meta_display_set_grab_op_cursor (MetaDisplay *display,
       meta_topic (META_DEBUG_WINDOW_OPS,
                   "Changed pointer with XChangeActivePointerGrab()\n");
 
-      if (meta_error_trap_pop_with_return (display, FALSE) != Success)
+      if (meta_error_trap_pop_with_return (display) != Success)
         {
           meta_topic (META_DEBUG_WINDOW_OPS,
                       "Error trapped from XChangeActivePointerGrab()\n");
@@ -3446,7 +3472,7 @@ meta_display_set_grab_op_cursor (MetaDisplay *display,
                       "XGrabPointer() failed time %u\n",
                       timestamp);
         }
-      meta_error_trap_pop (display, TRUE);
+      meta_error_trap_pop (display);
     }
 
 #undef GRAB_MASK
@@ -3468,6 +3494,7 @@ meta_display_begin_grab_op (MetaDisplay *display,
                             int          root_x,
                             int          root_y)
 {
+  MetaWindow *grab_window = NULL;
   Window grab_xwindow;
   
   meta_topic (META_DEBUG_WINDOW_OPS,
@@ -3497,14 +3524,25 @@ meta_display_begin_grab_op (MetaDisplay *display,
         }
     }
 
+  /* If window is a modal dialog attached to its parent,
+   * grab the parent instead for moving.
+   */
+  if (meta_prefs_get_attach_modal_dialogs () &&
+      window && window->type == META_WINDOW_MODAL_DIALOG &&
+      meta_grab_op_is_moving (op))
+    grab_window = meta_window_get_transient_for (window);
+
+  if (grab_window == NULL)
+    grab_window = window;
+
   /* FIXME:
    *   If we have no MetaWindow we do our best
    *   and try to do the grab on the RootWindow.
    *   This will fail if anyone else has any
    *   key grab on the RootWindow.
    */
-  if (window)
-    grab_xwindow = window->frame ? window->frame->xwindow : window->xwindow;
+  if (grab_window)
+    grab_xwindow = grab_window->frame ? grab_window->frame->xwindow : grab_window->xwindow;
   else
     grab_xwindow = screen->xroot;
 
@@ -3526,9 +3564,9 @@ meta_display_begin_grab_op (MetaDisplay *display,
   /* Grab keys for keyboard ops and mouse move/resizes; see #126497 */
   if (grab_op_is_keyboard (op) || grab_op_is_mouse_only (op))
     {
-      if (window)
+      if (grab_window)
         display->grab_have_keyboard =
-                     meta_window_grab_all_keys (window, timestamp);
+                     meta_window_grab_all_keys (grab_window, timestamp);
 
       else
         display->grab_have_keyboard =
@@ -3545,11 +3583,15 @@ meta_display_begin_grab_op (MetaDisplay *display,
     }
   
   display->grab_op = op;
-  display->grab_window = window;
+  display->grab_window = grab_window;
   display->grab_screen = screen;
   display->grab_xwindow = grab_xwindow;
   display->grab_button = button;
   display->grab_mask = modmask;
+  if (window)
+    display->grab_tile_mode = window->tile_mode;
+  else
+    display->grab_tile_mode = META_TILE_NONE;
   display->grab_anchor_root_x = root_x;
   display->grab_anchor_root_y = root_y;
   display->grab_latest_motion_x = root_x;
@@ -3563,6 +3605,7 @@ meta_display_begin_grab_op (MetaDisplay *display,
   display->grab_last_user_action_was_snap = FALSE;
 #endif
   display->grab_frame_action = frame_action;
+  display->grab_resize_unmaximize = 0;
 
   if (display->grab_resize_timeout_id)
     {
@@ -3621,7 +3664,7 @@ meta_display_begin_grab_op (MetaDisplay *display,
                                                          XSyncCAEvents,
                                                          &values);
 
-          if (meta_error_trap_pop_with_return (display, FALSE) != Success)
+          if (meta_error_trap_pop_with_return (display) != Success)
 	    display->grab_sync_request_alarm = None;
 
           meta_topic (META_DEBUG_RESIZING,
@@ -3745,6 +3788,7 @@ meta_display_end_grab_op (MetaDisplay *display,
   display->grab_window = NULL;
   display->grab_screen = NULL;
   display->grab_xwindow = None;
+  display->grab_tile_mode = META_TILE_NONE;
   display->grab_op = META_GRAB_OP_NONE;
 
   if (display->grab_resize_popup)
@@ -3840,7 +3884,7 @@ meta_change_button_grab (MetaDisplay *display,
         {
           int result;
           
-          result = meta_error_trap_pop_with_return (display, FALSE);
+          result = meta_error_trap_pop_with_return (display);
           
           if (result != Success)
             meta_verbose ("Failed to %s button %d with mask 0x%x for window 0x%lx error code %d\n",
@@ -3851,7 +3895,7 @@ meta_change_button_grab (MetaDisplay *display,
       ++ignored_mask;
     }
 
-  meta_error_trap_pop (display, FALSE);
+  meta_error_trap_pop (display);
 }
 
 void
@@ -4035,7 +4079,7 @@ meta_display_update_active_window_hint (MetaDisplay *display)
                        XA_WINDOW,
                        32, PropModeReplace, (guchar*) data, 1);
 
-      meta_error_trap_pop (display, FALSE);
+      meta_error_trap_pop (display);
 
       tmp = tmp->next;
     }
@@ -4132,8 +4176,8 @@ meta_set_syncing (gboolean setting)
   if (setting != is_syncing)
     {
       is_syncing = setting;
-
-      XSynchronize (meta_get_display ()->xdisplay, is_syncing);
+      if (meta_get_display ())
+        XSynchronize (meta_get_display ()->xdisplay, is_syncing);
     }
 }
 
@@ -4315,7 +4359,7 @@ process_request_frame_extents (MetaDisplay    *display,
                    display->atom__NET_FRAME_EXTENTS,
                    XA_CARDINAL,
                    32, PropModeReplace, (guchar*) data, 4);
-  meta_error_trap_pop (display, FALSE);
+  meta_error_trap_pop (display);
 
   meta_XFree (hints);
 }
@@ -4503,6 +4547,18 @@ find_tab_backward (MetaDisplay   *display,
   return NULL;
 }
 
+/**
+ * meta_display_get_tab_list:
+ * @display: a #MetaDisplay
+ * @type: type of tab list
+ * @screen: a #MetaScreen
+ * @workspace: origin workspace
+ *
+ * Determine the list of windows that should be displayed for Alt-TAB
+ * functionality.  The windows are returned in most recently used order.
+ *
+ * Returns: (transfer container) (element-type Meta.Window): List of windows
+ */
 GList*
 meta_display_get_tab_list (MetaDisplay   *display,
                            MetaTabList    type,
@@ -4580,6 +4636,21 @@ meta_display_get_tab_list (MetaDisplay   *display,
   return tab_list;
 }
 
+/**
+ * meta_display_get_tab_next:
+ * @display: a #MetaDisplay
+ * @type: type of tab list
+ * @screen: a #MetaScreen
+ * @workspace: origin workspace
+ * @window: (allow-none): starting window 
+ * @backward: If %TRUE, look for the previous window.  
+ *
+ * Determine the next window that should be displayed for Alt-TAB
+ * functionality.
+ *
+ * Returns: (transfer none): Next window
+ *
+ */
 MetaWindow*
 meta_display_get_tab_next (MetaDisplay   *display,
                            MetaTabList    type,
@@ -4630,6 +4701,18 @@ meta_display_get_tab_next (MetaDisplay   *display,
   return ret;
 }
 
+/**
+ * meta_display_get_tab_current:
+ * @display: a #MetaDisplay
+ * @type: type of tab list
+ * @screen: a #MetaScreen
+ * @workspace: origin workspace
+ *
+ * Determine the active window that should be displayed for Alt-TAB.
+ *
+ * Returns: (transfer none): Current window
+ *
+ */
 MetaWindow*
 meta_display_get_tab_current (MetaDisplay   *display,
                               MetaTabList    type,
@@ -4754,11 +4837,11 @@ convert_property (MetaDisplay *display,
 		     (unsigned char *)icccm_version, 2);
   else
     {
-      meta_error_trap_pop_with_return (display, FALSE);
+      meta_error_trap_pop_with_return (display);
       return FALSE;
     }
   
-  if (meta_error_trap_pop_with_return (display, FALSE) != Success)
+  if (meta_error_trap_pop_with_return (display) != Success)
     return FALSE;
 
   /* Be sure the PropertyNotify has arrived so we
@@ -4790,7 +4873,7 @@ process_selection_request (MetaDisplay   *display,
       meta_error_trap_push (display);
       str = XGetAtomName (display->xdisplay,
                           event->xselectionrequest.selection);
-      meta_error_trap_pop (display, TRUE);
+      meta_error_trap_pop (display);
       
       meta_verbose ("Selection request with selection %s window 0x%lx not a WM_Sn selection we recognize\n",
                     str ? str : "(bad atom)", event->xselectionrequest.owner);
@@ -4824,11 +4907,11 @@ process_selection_request (MetaDisplay   *display,
                                   display->atom_ATOM_PAIR,
                                   &type, &format, &num, &rest, &data) != Success)
             {
-              meta_error_trap_pop_with_return (display, TRUE);
+              meta_error_trap_pop_with_return (display);
               return;
             }
           
-          if (meta_error_trap_pop_with_return (display, TRUE) == Success)
+          if (meta_error_trap_pop_with_return (display) == Success)
             {              
               /* FIXME: to be 100% correct, should deal with rest > 0,
                * but since we have 4 possible targets, we will hardly ever
@@ -4851,7 +4934,7 @@ process_selection_request (MetaDisplay   *display,
                                event->xselectionrequest.property,
                                display->atom_ATOM_PAIR,
                                32, PropModeReplace, data, num);
-              meta_error_trap_pop (display, FALSE);
+              meta_error_trap_pop (display);
               meta_XFree (data);
             }
         }
@@ -4907,7 +4990,7 @@ process_selection_clear (MetaDisplay   *display,
     meta_error_trap_push (display);
     str = XGetAtomName (display->xdisplay,
                         event->xselectionclear.selection);
-    meta_error_trap_pop (display, TRUE);
+    meta_error_trap_pop (display);
 
     meta_verbose ("Selection clear with selection %s window 0x%lx not a WM_Sn selection we recognize\n",
                   str ? str : "(bad atom)", event->xselectionclear.window);
@@ -4972,6 +5055,34 @@ meta_display_stack_cmp (const void *a,
     return 1;
   else
     return 0; /* not reached in theory, if windows on same display */
+}
+
+/**
+ * meta_display_sort_windows_by_stacking:
+ * @display: a #MetaDisplay
+ * @windows: (element-type MetaWindow): Set of windows
+ *
+ * Sorts a set of windows according to their current stacking order. If windows
+ * from multiple screens are present in the set of input windows, then all the
+ * windows on screen 0 are sorted below all the windows on screen 1, and so forth.
+ * Since the stacking order of override-redirect windows isn't controlled by
+ * Metacity, if override-redirect windows are in the input, the result may not
+ * correspond to the actual stacking order in the X server.
+ *
+ * An example of using this would be to sort the list of transient dialogs for a
+ * window into their current stacking order.
+ *
+ * Returns: (transfer container): Input windows sorted by stacking order, from lowest to highest
+ */
+GSList *
+meta_display_sort_windows_by_stacking (MetaDisplay *display,
+                                       GSList      *windows)
+{
+  GSList *copy = g_slist_copy (windows);
+
+  copy = g_slist_sort (copy, meta_display_stack_cmp);
+
+  return copy;
 }
 
 void
@@ -5069,14 +5180,33 @@ prefs_changed_callback (MetaPreference pref,
     {
       meta_bell_set_audible (display, meta_prefs_bell_is_audible ());
     }
-  else if (pref == META_PREF_COMPOSITING_MANAGER)
+  else if (pref == META_PREF_ATTACH_MODAL_DIALOGS)
     {
-      gboolean cm = meta_prefs_get_compositing_manager ();
+      MetaDisplay *display = data;
+      GSList *windows;
+      GSList *tmp;
 
-      if (cm)
-        enable_compositor (display, TRUE);
-      else
-	disable_compositor (display);
+      windows = meta_display_list_windows (display, META_LIST_DEFAULT);
+
+      for (tmp = windows; tmp != NULL; tmp = tmp->next)
+        {
+          MetaWindow *w = tmp->data;
+          MetaWindow *parent = meta_window_get_transient_for (w);
+          meta_window_recalc_features (w);
+
+          if (w->type == META_WINDOW_MODAL_DIALOG && parent && parent != w)
+            {
+              int x, y;
+              /* Forcing a call to move_resize() does two things: first, it handles
+               * resizing the dialog frame window to the correct size when we remove
+               * or add the decorations. Second, it will take care of positioning the
+               * dialog as "attached" to the parent when we turn the preference on
+               * via the constrain_modal_dialog() constraint.
+               **/
+              meta_window_get_position (w, &x, &y);
+              meta_window_move (w, FALSE, x, y);
+            }
+        }
     }
 }
 
@@ -5223,7 +5353,7 @@ meta_display_set_input_focus_window (MetaDisplay *display,
                   focus_frame ? window->frame->xwindow : window->xwindow,
                   RevertToPointerRoot,
                   timestamp);
-  meta_error_trap_pop (display, FALSE);
+  meta_error_trap_pop (display);
 
   display->expected_focus_window = window;
   display->last_focus_time = timestamp;
@@ -5278,18 +5408,32 @@ meta_display_get_compositor_version (MetaDisplay *display,
   *minor = display->composite_minor_version;
 }
 
+/**
+ * meta_display_get_xdisplay: (skip)
+ *
+ */
 Display *
 meta_display_get_xdisplay (MetaDisplay *display)
 {
   return display->xdisplay;
 }
 
+/**
+ * meta_display_get_compositor: (skip)
+ *
+ */
 MetaCompositor *
 meta_display_get_compositor (MetaDisplay *display)
 {
   return display->compositor;
 }
 
+/**
+ * meta_display_get_screens:
+ * @display: a #MetaDisplay
+ *
+ * Returns: (transfer none) (element-type Meta.Screen): Screens for this display
+ */
 GSList *
 meta_display_get_screens (MetaDisplay *display)
 {
@@ -5334,9 +5478,32 @@ meta_display_get_shape_event_base (MetaDisplay *display)
 }
 #endif
 
+/**
+ * meta_display_get_atom: (skip)
+ *
+ * Gets up an X atom that Mutter prefetched at startup.
+ *
+ * Return value: the X atom corresponding to the given atom enumeration
+ */
 Atom meta_display_get_atom (MetaDisplay *display, MetaAtom meta_atom)
 {
   Atom *atoms = & display->atom_WM_PROTOCOLS;
 
   return atoms[meta_atom - 1];
+}
+
+/**
+ * meta_display_get_leader_window:
+ * @display: a #MetaDisplay
+ *
+ * Returns the window manager's leader window (as defined by the
+ * _NET_SUPPORTING_WM_CHECK mechanism of EWMH). For use by plugins that wish
+ * to attach additional custom properties to this window.
+ *
+ * Return value: (transfer none): xid of the leader window.
+ **/
+Window
+meta_display_get_leader_window (MetaDisplay *display)
+{
+  return display->leader_window;
 }

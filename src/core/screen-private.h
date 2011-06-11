@@ -34,7 +34,7 @@
 #define META_SCREEN_PRIVATE_H
 
 #include "display-private.h"
-#include "screen.h"
+#include <meta/screen.h>
 #include <X11/Xutil.h>
 #include "stack-tracker.h"
 #include "ui.h"
@@ -49,14 +49,6 @@ struct _MetaMonitorInfo
 
 typedef void (* MetaScreenWindowFunc) (MetaScreen *screen, MetaWindow *window,
                                        gpointer user_data);
-
-typedef enum
-{
-  META_SCREEN_TOPLEFT,
-  META_SCREEN_TOPRIGHT,
-  META_SCREEN_BOTTOMLEFT,
-  META_SCREEN_BOTTOMRIGHT
-} MetaScreenCorner;
 
 typedef enum
 {
@@ -82,6 +74,9 @@ struct _MetaScreen
   MetaRectangle rect;  /* Size of screen; rect.x & rect.y are always 0 */
   MetaUI *ui;
   MetaTabPopup *tab_popup, *ws_popup;
+  MetaTilePreview *tile_preview;
+
+  guint tile_preview_timeout_id;
 
   MetaWorkspace *active_workspace;
 
@@ -104,6 +99,7 @@ struct _MetaScreen
   guint32 wm_sn_timestamp;
   
   MetaMonitorInfo *monitor_infos;
+  int primary_monitor_index;
   int n_monitor_infos;
 
   /* Cache the current monitor */
@@ -124,6 +120,7 @@ struct _MetaScreen
   int columns_of_workspaces;
   MetaScreenCorner starting_corner;
   guint vertical_workspaces : 1;
+  guint workspace_layout_overridden : 1;
   
   guint keys_grabbed : 1;
   guint all_keys_grabbed : 1;
@@ -145,6 +142,7 @@ struct _MetaScreenClass
 
   void (*restacked)         (MetaScreen *);
   void (*workareas_changed) (MetaScreen *);
+  void (*monitors_changed)  (MetaScreen *);
 };
 
 MetaScreen*   meta_screen_new                 (MetaDisplay                *display,
@@ -178,6 +176,10 @@ void          meta_screen_workspace_popup_select       (MetaScreen    *screen,
                                                         MetaWorkspace *workspace);
 MetaWorkspace*meta_screen_workspace_popup_get_selected (MetaScreen    *screen);
 void          meta_screen_workspace_popup_destroy      (MetaScreen    *screen);
+
+void          meta_screen_tile_preview_update          (MetaScreen    *screen,
+                                                        gboolean       delay);
+void          meta_screen_tile_preview_hide            (MetaScreen    *screen);
 
 MetaWindow*   meta_screen_get_mouse_window     (MetaScreen                 *screen,
                                                 MetaWindow                 *not_this_one);
@@ -247,5 +249,7 @@ void     meta_screen_workspace_switched (MetaScreen         *screen,
                                          int                 from,
                                          int                 to,
                                          MetaMotionDirection direction);
+
+void meta_screen_set_active_workspace_hint (MetaScreen *screen);
 
 #endif

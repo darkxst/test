@@ -34,11 +34,11 @@
 #include <glib.h>
 #include <X11/Xlib.h>
 #include "eventqueue.h"
-#include "common.h"
-#include "boxes.h"
-#include "display.h"
+#include <meta/common.h>
+#include <meta/boxes.h>
+#include <meta/display.h>
 #include "keybindings-private.h"
-#include "prefs.h"
+#include <meta/prefs.h>
 
 #ifdef HAVE_STARTUP_NOTIFICATION
 #include <libsn/sn.h>
@@ -77,21 +77,29 @@ typedef enum {
  */
 #define N_IGNORED_SERIALS           4
 
+typedef enum {
+  META_TILE_NONE,
+  META_TILE_LEFT,
+  META_TILE_RIGHT,
+  META_TILE_MAXIMIZED
+} MetaTileMode;
+
 struct _MetaDisplay
 {
   GObject parent_instance;
   
   char *name;
   Display *xdisplay;
+  char *hostname;
 
   Window leader_window;
   Window timestamp_pinging_window;
-  
+
   /* Pull in all the names of atoms as fields; we will intern them when the
    * class is constructed.
    */
 #define item(x)  Atom atom_##x;
-#include "atomnames.h"
+#include <meta/atomnames.h>
 #undef item
 
   /* This is the actual window from focus events,
@@ -178,12 +186,16 @@ struct _MetaDisplay
   int         grab_anchor_root_x;
   int         grab_anchor_root_y;
   MetaRectangle grab_anchor_window_pos;
+  MetaTileMode  grab_tile_mode;
   int         grab_latest_motion_x;
   int         grab_latest_motion_y;
   gulong      grab_mask;
   guint       grab_have_pointer : 1;
   guint       grab_have_keyboard : 1;
   guint       grab_frame_action : 1;
+  /* During a resize operation, the directions in which we've broken
+   * out of the initial maximization state */
+  guint       grab_resize_unmaximize : 2; /* MetaMaximizeFlags */
   MetaRectangle grab_initial_window_pos;
   int         grab_initial_x, grab_initial_y;  /* These are only relevant for */
   gboolean    grab_threshold_movement_reached; /* raise_on_click == FALSE.    */
@@ -217,6 +229,7 @@ struct _MetaDisplay
   KeySym *keymap;
   int keysyms_per_keycode;
   XModifierKeymap *modmap;
+  unsigned int above_tab_keycode;
   unsigned int ignored_modifier_mask;
   unsigned int num_lock_mask;
   unsigned int scroll_lock_mask;
@@ -303,22 +316,15 @@ struct _MetaDisplayClass
   GObjectClass parent_class;
 };
 
-/* Xserver time can wraparound, thus comparing two timestamps needs to take
- * this into account.  Here's a little macro to help out.  If no wraparound
- * has occurred, this is equivalent to
- *   time1 < time2
- * Of course, the rest of the ugliness of this macro comes from accounting
- * for the fact that wraparound can occur and the fact that a timestamp of
- * 0 must be special-cased since it means older than anything else. 
- *
- * Note that this is NOT an equivalent for time1 <= time2; if that's what
- * you need then you'll need to swap the order of the arguments and negate
- * the result.
- */
 #define XSERVER_TIME_IS_BEFORE_ASSUMING_REAL_TIMESTAMPS(time1, time2) \
   ( (( (time1) < (time2) ) && ( (time2) - (time1) < ((guint32)-1)/2 )) ||     \
     (( (time1) > (time2) ) && ( (time1) - (time2) > ((guint32)-1)/2 ))        \
   )
+/**
+ * XSERVER_TIME_IS_BEFORE:
+ *
+ * See the docs for meta_display_xserver_time_is_before().
+ */
 #define XSERVER_TIME_IS_BEFORE(time1, time2)                          \
   ( (time1) == 0 ||                                                     \
     (XSERVER_TIME_IS_BEFORE_ASSUMING_REAL_TIMESTAMPS(time1, time2) && \
@@ -435,5 +441,8 @@ void meta_display_queue_autoraise_callback  (MetaDisplay *display,
 void meta_display_remove_autoraise_callback (MetaDisplay *display);
 
 void meta_display_overlay_key_activate (MetaDisplay *display);
+
+/* In above-tab-keycode.c */
+guint meta_display_get_above_tab_keycode (MetaDisplay *display);
 
 #endif
