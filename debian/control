@@ -8,7 +8,7 @@ Section: x11
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 XSBC-Original-Maintainer: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>
-Uploaders: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>, Laurent Bigonville <bigon@debian.org>
+Uploaders: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>, Frederic Peters <fpeters@debian.org>, Laurent Bigonville <bigon@debian.org>
 Build-Depends: cdbs (>= 0.4.41),
                debhelper (>= 5),
                dh-autoreconf,
@@ -51,6 +51,7 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          mutter-common (>= ${gnome:Version}),
          mutter-common (<< ${gnome:NextVersion}),
+         libgnome2-common,
          zenity
 Provides: x-window-manager
 Recommends: gnome-session | x-session-manager

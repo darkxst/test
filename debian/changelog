@@ -1,3 +1,24 @@
+mutter (3.0.2.1-1ubuntu1) oneiric; urgency=low
+
+  * Merge with debian unstable, remaining changes:
+    + debian/patches/03_link_gles2.patch: Link to clutter-glx-1.0
+      explicitily at the end of link flags, to bring in libGLESv2 on armel.
+
+ -- Laurent Bigonville <bigon@ubuntu.com>  Mon, 13 Jun 2011 12:26:51 +0200
+
+mutter (3.0.2.1-1) experimental; urgency=low
+
+  [ Rico Tzschichholz ]
+  * New upstream release
+  * debian/watch:
+    - Look for bzip2 tarballs
+
+  [ Josselin Mouette ]
+  * Depend on libgnome2-common for the GConf schemas. This will be 
+    necessary until mutter is ported to GSettings.
+
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 11 Jun 2011 14:39:59 +0200
+
 mutter (3.0.1-1ubuntu1) oneiric; urgency=low
 
   * Merge with debian experimental, remaining changes:
