@@ -1,3 +1,9 @@
+mutter (3.0.2.1-2ubuntu2) oneiric; urgency=low
+
+  * No source change upload: Rebuild against new gir1.2-json-1.0 name
+
+ -- Laurent Bigonville <bigon@ubuntu.com>  Wed, 13 Jul 2011 20:47:52 +0200
+
 mutter (3.0.2.1-2ubuntu1) oneiric; urgency=low
 
   * Merge with debian unstable, remaining changes:
