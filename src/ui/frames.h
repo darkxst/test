@@ -98,6 +98,9 @@ struct _MetaFrames
   guint tooltip_timeout;
   MetaUIFrame *last_motion_frame;
 
+  GtkStyleContext *normal_style;
+  GHashTable *style_variants;
+
   int expose_delay_count;
 
   int invalidate_cache_timeout_id;
@@ -124,6 +127,9 @@ void meta_frames_set_title (MetaFrames *frames,
                             Window      xwindow,
                             const char *title);
 
+void meta_frames_update_frame_style (MetaFrames *frames,
+                                     Window      xwindow);
+
 void meta_frames_repaint_frame (MetaFrames *frames,
                                 Window      xwindow);
 
@@ -144,6 +150,10 @@ void meta_frames_apply_shapes (MetaFrames *frames,
                                int         new_window_width,
                                int         new_window_height,
                                gboolean    window_has_shape);
+cairo_region_t *meta_frames_get_frame_bounds (MetaFrames *frames,
+                                              Window      xwindow,
+                                              int         window_width,
+                                              int         window_height);
 void meta_frames_move_resize_frame (MetaFrames *frames,
 				    Window      xwindow,
 				    int         x,

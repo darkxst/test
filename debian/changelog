@@ -1,3 +1,13 @@
+mutter (3.1.4-0ubuntu1) oneiric; urgency=low
+
+  * New upstream release
+    - Fix Adwaita window decoration (LP: #828543)
+  * debian/control.in: Bump libclutter-1.0-dev build-dependency to 1.7.5
+  * debian/patches/03_link_gles2.patch: Refreshed
+  * debian/libmutter0.symbols: Adjust .symbols file
+
+ -- Laurent Bigonville <bigon@ubuntu.com>  Wed, 24 Aug 2011 14:53:37 +0200
+
 mutter (3.0.2.1-2ubuntu2) oneiric; urgency=low
 
   * No source change upload: Rebuild against new gir1.2-json-1.0 name
