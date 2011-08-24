@@ -11,6 +11,8 @@
 #include <X11/extensions/Xrender.h>
 
 #include <clutter/x11/clutter-x11.h>
+#define COGL_ENABLE_EXPERIMENTAL_API
+#include <cogl/cogl-texture-pixmap-x11.h>
 #include <gdk/gdk.h> /* for gdk_rectangle_union() */
 
 #include <meta/display.h>
@@ -142,10 +144,10 @@ static void meta_window_actor_get_property (GObject      *object,
                                             GParamSpec   *pspec);
 
 static void meta_window_actor_paint (ClutterActor *actor);
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
+
 static gboolean meta_window_actor_get_paint_volume (ClutterActor       *actor,
                                                     ClutterPaintVolume *volume);
-#endif
+
 
 static void     meta_window_actor_detach     (MetaWindowActor *self);
 static gboolean meta_window_actor_has_shadow (MetaWindowActor *self);
@@ -220,9 +222,7 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
   object_class->constructed  = meta_window_actor_constructed;
 
   actor_class->paint = meta_window_actor_paint;
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
   actor_class->get_paint_volume = meta_window_actor_get_paint_volume;
-#endif
 
   pspec = g_param_spec_object ("meta-window",
                                "MetaWindow",
@@ -679,7 +679,6 @@ meta_window_actor_get_shape_bounds (MetaWindowActor       *self,
     bounds->x = bounds->y = bounds->width = bounds->height = 0;
 }
 
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
 static void
 meta_window_actor_get_shadow_bounds (MetaWindowActor       *self,
                                      gboolean               appears_focused,
@@ -700,7 +699,26 @@ meta_window_actor_get_shadow_bounds (MetaWindowActor       *self,
                           shape_bounds.height,
                           bounds);
 }
-#endif
+
+/* If we have an ARGB32 window that we decorate with a frame, it's
+ * probably something like a translucent terminal - something where
+ * the alpha channel represents transparency rather than a shape.  We
+ * don't want to show the shadow through the translucent areas since
+ * the shadow is wrong for translucent windows (it should be
+ * translucent itself and colored), and not only that, will /look/
+ * horribly wrong - a misplaced big black blob. As a hack, what we
+ * want to do is just draw the shadow as normal outside the frame, and
+ * inside the frame draw no shadow.  This is also not even close to
+ * the right result, but looks OK. We also apply this approach to
+ * windows set to be partially translucent with _NET_WM_WINDOW_OPACITY.
+ */
+static gboolean
+clip_shadow_under_window (MetaWindowActor *self)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+
+  return (priv->argb32 || priv->opacity != 0xff) && priv->window->frame;
+}
 
 static void
 meta_window_actor_paint (ClutterActor *actor)
@@ -714,9 +732,24 @@ meta_window_actor_paint (ClutterActor *actor)
     {
       MetaShadowParams params;
       cairo_rectangle_int_t shape_bounds;
+      cairo_region_t *clip = priv->shadow_clip;
 
       meta_window_actor_get_shape_bounds (self, &shape_bounds);
       meta_window_actor_get_shadow_params (self, appears_focused, &params);
+
+      /* The frame bounds are already subtracted from priv->shadow_clip
+       * if that exists.
+       */
+      if (!clip && clip_shadow_under_window (self))
+        {
+          cairo_region_t *frame_bounds = meta_window_get_frame_bounds (priv->window);
+          cairo_rectangle_int_t bounds;
+
+          meta_window_actor_get_shadow_bounds (self, appears_focused, &bounds);
+          clip = cairo_region_create_rectangle (&bounds);
+
+          cairo_region_subtract (clip, frame_bounds);
+        }
 
       meta_shadow_paint (shadow,
                          params.x_offset + shape_bounds.x,
@@ -724,13 +757,16 @@ meta_window_actor_paint (ClutterActor *actor)
                          shape_bounds.width,
                          shape_bounds.height,
                          (clutter_actor_get_paint_opacity (actor) * params.opacity * priv->opacity) / (255 * 255),
-                         priv->shadow_clip);
+                         clip,
+                         clip_shadow_under_window (self)); /* clip_strictly - not just as an optimization */
+
+      if (clip && clip != priv->shadow_clip)
+        cairo_region_destroy (clip);
     }
 
   CLUTTER_ACTOR_CLASS (meta_window_actor_parent_class)->paint (actor);
 }
 
-#if CLUTTER_CHECK_VERSION(1, 5, 2)
 static gboolean
 meta_window_actor_get_paint_volume (ClutterActor       *actor,
                                     ClutterPaintVolume *volume)
@@ -772,7 +808,6 @@ meta_window_actor_get_paint_volume (ClutterActor       *actor,
 
   return TRUE;
 }
-#endif /* CLUTTER_CHECK_VERSION */
 
 static gboolean
 is_shaped (MetaDisplay *display, Window xwindow)
@@ -1644,13 +1679,22 @@ meta_window_actor_update_bounding_region (MetaWindowActor *self,
 
   priv->bounding_region = cairo_region_create_rectangle (&bounding_rectangle);
 
-  /* When we're shaped, we use the shape region to generate the shadow; the shape
-   * region only changes when we get ShapeNotify event; but for unshaped windows
-   * we generate the shadow from the bounding region, so we need to recompute
-   * the shadow when the size changes.
-   */
-  if (!priv->shaped)
-    meta_window_actor_invalidate_shadow (self);
+  if (priv->shaped)
+    {
+      /* If we're shaped, the implicit shape region clipping we need to do needs
+       * to be updated.
+       */
+      meta_window_actor_update_shape (self, TRUE);
+    }
+  else
+    {
+      /* When we're shaped, we use the shape region to generate the shadow; the shape
+       * region only changes when we get ShapeNotify event; but for unshaped windows
+       * we generate the shadow from the bounding region, so we need to recompute
+       * the shadow when the size changes.
+       */
+      meta_window_actor_invalidate_shadow (self);
+    }
 
   g_signal_emit (self, signals[SIZE_CHANGED], 0);
 }
@@ -1671,6 +1715,20 @@ meta_window_actor_update_shape_region (MetaWindowActor *self,
       cairo_rectangle_int_t rect = { rects[i].x, rects[i].y, rects[i].width, rects[i].height };
       cairo_region_union_rectangle (priv->shape_region, &rect);
     }
+
+  /* Our "shape_region" is called the "bounding region" in the X Shape
+   * Extension Documentation.
+   *
+   * Our "bounding_region" is called the "bounding rectangle", which defines
+   * the shape of the window as if it the window was unshaped.
+   *
+   * The X Shape extension requires that the "bounding region" can never
+   * extend outside the "bounding rectangle", and says it must be implicitly
+   * clipped before rendering. The region we get back hasn't been clipped.
+   * We explicitly clip the region here.
+   */
+  if (priv->bounding_region != NULL)
+    cairo_region_intersect (priv->shape_region, priv->bounding_region);
 }
 
 /**
@@ -1712,7 +1770,7 @@ dump_region (cairo_region_t *region)
   for (i = 0; i < n_rects; i++)
     {
       cairo_rectangle_int_t rect;
-      cairo_region_get_rectangle (region, &rect);
+      cairo_region_get_rectangle (region, i, &rect);
       g_print ("+%d+%dx%dx%d ",
                rect.x, rect.y, rect.width, rect.height);
     }
@@ -1787,6 +1845,12 @@ meta_window_actor_set_visible_region_beneath (MetaWindowActor *self,
     {
       meta_window_actor_clear_shadow_clip (self);
       priv->shadow_clip = cairo_region_copy (beneath_region);
+
+      if (clip_shadow_under_window (self))
+        {
+          cairo_region_t *frame_bounds = meta_window_get_frame_bounds (priv->window);
+          cairo_region_subtract (priv->shadow_clip, frame_bounds);
+        }
     }
 }
 
@@ -1805,6 +1869,19 @@ meta_window_actor_reset_visible_regions (MetaWindowActor *self)
   meta_shaped_texture_set_clip_region (META_SHAPED_TEXTURE (priv->actor),
                                        NULL);
   meta_window_actor_clear_shadow_clip (self);
+}
+
+static gboolean
+texture_pixmap_using_extension (ClutterX11TexturePixmap *texture)
+{
+  ClutterTexture *self = CLUTTER_TEXTURE (texture);
+  CoglHandle handle;
+
+  handle = clutter_texture_get_cogl_texture (self);
+
+  return handle != NULL &&
+         cogl_is_texture_pixmap_x11 (handle) &&
+         cogl_texture_pixmap_x11_is_using_tfp_extension (handle);
 }
 
 static void
@@ -1877,11 +1954,8 @@ check_needs_pixmap (MetaWindowActor *self)
        * do it here.
        * See: http://bugzilla.clutter-project.org/show_bug.cgi?id=2236
        */
-#ifdef HAVE_GLX_TEXTURE_PIXMAP
-      if (G_UNLIKELY (!clutter_glx_texture_pixmap_using_extension (
-                                  CLUTTER_GLX_TEXTURE_PIXMAP (priv->actor))))
+      if (G_UNLIKELY (!texture_pixmap_using_extension (CLUTTER_X11_TEXTURE_PIXMAP (priv->actor))))
         g_warning ("NOTE: Not using GLX TFP!\n");
-#endif
 
       g_object_get (priv->actor,
                     "pixmap-width", &pxm_width,

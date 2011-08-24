@@ -445,6 +445,13 @@ meta_ui_unflicker_frame_bg (MetaUI *ui,
 }
 
 void
+meta_ui_update_frame_style (MetaUI  *ui,
+                            Window   xwindow)
+{
+  meta_frames_update_frame_style (ui->frames, xwindow);
+}
+
+void
 meta_ui_repaint_frame (MetaUI *ui,
                        Window xwindow)
 {
@@ -468,6 +475,16 @@ meta_ui_apply_frame_shape  (MetaUI  *ui,
   meta_frames_apply_shapes (ui->frames, xwindow,
                             new_window_width, new_window_height,
                             window_has_shape);
+}
+
+cairo_region_t *
+meta_ui_get_frame_bounds (MetaUI  *ui,
+                          Window   xwindow,
+                          int      window_width,
+                          int      window_height)
+{
+  return meta_frames_get_frame_bounds (ui->frames, xwindow,
+                                       window_width, window_height);
 }
 
 void

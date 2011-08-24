@@ -25,6 +25,7 @@
 
 #include <config.h>
 #include <math.h>
+#include <string.h>
 #include <meta/boxes.h>
 #include "frames.h"
 #include <meta/util.h>
@@ -187,6 +188,74 @@ prefs_changed_callback (MetaPreference pref,
     }
 }
 
+static GtkStyleContext *
+create_style_context (MetaFrames  *frames,
+                      const gchar *variant)
+{
+  GtkStyleContext *style;
+  GdkScreen *screen;
+  char *theme_name;
+
+  screen = gtk_widget_get_screen (GTK_WIDGET (frames));
+  g_object_get (gtk_settings_get_for_screen (screen),
+                "gtk-theme-name", &theme_name,
+                NULL);
+
+  style = gtk_style_context_new ();
+  gtk_style_context_set_path (style,
+                              gtk_widget_get_path (GTK_WIDGET (frames)));
+
+  if (theme_name && *theme_name)
+    {
+      GtkCssProvider *provider;
+
+      provider = gtk_css_provider_get_named (theme_name, variant);
+      gtk_style_context_add_provider (style,
+                                      GTK_STYLE_PROVIDER (provider),
+                                      GTK_STYLE_PROVIDER_PRIORITY_THEME);
+    }
+
+  g_free (theme_name);
+
+  return style;
+}
+
+static GtkStyleContext *
+meta_frames_get_theme_variant (MetaFrames  *frames,
+                               const gchar *variant)
+{
+  GtkStyleContext *style;
+
+  style = g_hash_table_lookup (frames->style_variants, variant);
+  if (style == NULL)
+    {
+      style = create_style_context (frames, variant);
+      g_hash_table_insert (frames->style_variants, g_strdup (variant), style);
+    }
+
+  return style;
+}
+
+static void
+update_style_contexts (MetaFrames *frames)
+{
+  GtkStyleContext *style;
+  GList *variants, *variant;
+
+  if (frames->normal_style)
+    g_object_unref (frames->normal_style);
+  frames->normal_style = create_style_context (frames, NULL);
+
+  variants = g_hash_table_get_keys (frames->style_variants);
+  for (variant = variants; variant; variant = variants->next)
+    {
+      style = create_style_context (frames, (char *)variant->data);
+      g_hash_table_insert (frames->style_variants,
+                           g_strdup (variant->data), style);
+    }
+  g_list_free (variants);
+}
+
 static void
 meta_frames_init (MetaFrames *frames)
 {
@@ -201,6 +270,9 @@ meta_frames_init (MetaFrames *frames)
   frames->invalidate_cache_timeout_id = 0;
   frames->invalidate_frames = NULL;
   frames->cache = g_hash_table_new (g_direct_hash, g_direct_equal);
+
+  frames->style_variants = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                  g_free, g_object_unref);
 
   gtk_widget_set_double_buffered (GTK_WIDGET (frames), FALSE);
 
@@ -240,6 +312,18 @@ meta_frames_destroy (GtkWidget *object)
       meta_frames_unmanage_window (frames, frame->xwindow);
     }
   g_slist_free (winlist);
+
+  if (frames->normal_style)
+    {
+      g_object_unref (frames->normal_style);
+      frames->normal_style = NULL;
+    }
+
+  if (frames->style_variants)
+    {
+      g_hash_table_destroy (frames->style_variants);
+      frames->style_variants = NULL;
+    }
 
   GTK_WIDGET_CLASS (meta_frames_parent_class)->destroy (object);
 }
@@ -429,6 +513,8 @@ meta_frames_style_updated  (GtkWidget *widget)
 
   meta_frames_font_changed (frames);
 
+  update_style_contexts (frames);
+
   g_hash_table_foreach (frames->frames,
                         reattach_style_func, frames);
 
@@ -574,10 +660,23 @@ static void
 meta_frames_attach_style (MetaFrames  *frames,
                           MetaUIFrame *frame)
 {
+  gboolean has_frame;
+  char *variant = NULL;
+
   if (frame->style != NULL)
     g_object_unref (frame->style);
 
-  frame->style = g_object_ref (gtk_widget_get_style_context (GTK_WIDGET (frames)));
+  meta_core_get (GDK_DISPLAY_XDISPLAY (gdk_display_get_default ()),
+                 frame->xwindow,
+                 META_CORE_WINDOW_HAS_FRAME, &has_frame,
+                 META_CORE_GET_THEME_VARIANT, &variant,
+                 META_CORE_GET_END);
+
+  if (variant == NULL || strcmp(variant, "normal") == 0)
+    frame->style = g_object_ref (frames->normal_style);
+  else
+    frame->style = g_object_ref (meta_frames_get_theme_variant (frames,
+                                                                variant));
 }
 
 void
@@ -596,7 +695,6 @@ meta_frames_manage_window (MetaFrames *frames,
   gdk_window_set_user_data (frame->window, frames);
 
   frame->style = NULL;
-  meta_frames_attach_style (frames, frame);
 
   /* Don't set event mask here, it's in frame.c */
   
@@ -764,6 +862,155 @@ meta_frames_unflicker_bg (MetaFrames *frames,
   set_background_none (GDK_DISPLAY_XDISPLAY (gdk_display_get_default ()), frame->xwindow);
 }
 
+#ifdef HAVE_SHAPE
+static void
+apply_cairo_region_to_window (Display        *display,
+                              Window          xwindow,
+                              cairo_region_t *region,
+                              int             op)
+{
+  int n_rects, i;
+  XRectangle *rects;
+
+  n_rects = cairo_region_num_rectangles (region);
+  rects = g_new (XRectangle, n_rects);
+
+  for (i = 0; i < n_rects; i++)
+    {
+      cairo_rectangle_int_t rect;
+
+      cairo_region_get_rectangle (region, i, &rect);
+
+      rects[i].x = rect.x;
+      rects[i].y = rect.y;
+      rects[i].width = rect.width;
+      rects[i].height = rect.height;
+    }
+
+  XShapeCombineRectangles (display, xwindow,
+                           ShapeBounding, 0, 0, rects, n_rects,
+                           op, YXBanded);
+
+  g_free (rects);
+}
+#endif
+
+static cairo_region_t *
+get_bounds_region (MetaFrames        *frames,
+                  MetaUIFrame       *frame,
+                  MetaFrameGeometry *fgeom,
+                  int                window_width,
+                  int                window_height)
+{
+  cairo_region_t *corners_region;
+  cairo_region_t *bounds_region;
+  cairo_rectangle_int_t rect;
+
+  corners_region = cairo_region_create ();
+  
+  if (fgeom->top_left_corner_rounded_radius != 0)
+    {
+      const int corner = fgeom->top_left_corner_rounded_radius;
+      const float radius = sqrt(corner) + corner;
+      int i;
+
+      for (i=0; i<corner; i++)
+        {
+          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
+          rect.x = 0;
+          rect.y = i;
+          rect.width = width;
+          rect.height = 1;
+          
+          cairo_region_union_rectangle (corners_region, &rect);
+        }
+    }
+
+  if (fgeom->top_right_corner_rounded_radius != 0)
+    {
+      const int corner = fgeom->top_right_corner_rounded_radius;
+      const float radius = sqrt(corner) + corner;
+      int i;
+
+      for (i=0; i<corner; i++)
+        {
+          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
+          rect.x = window_width - width;
+          rect.y = i;
+          rect.width = width;
+          rect.height = 1;
+          
+          cairo_region_union_rectangle (corners_region, &rect);
+        }
+    }
+
+  if (fgeom->bottom_left_corner_rounded_radius != 0)
+    {
+      const int corner = fgeom->bottom_left_corner_rounded_radius;
+      const float radius = sqrt(corner) + corner;
+      int i;
+
+      for (i=0; i<corner; i++)
+        {
+          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
+          rect.x = 0;
+          rect.y = window_height - i - 1;
+          rect.width = width;
+          rect.height = 1;
+          
+          cairo_region_union_rectangle (corners_region, &rect);
+        }
+    }
+
+  if (fgeom->bottom_right_corner_rounded_radius != 0)
+    {
+      const int corner = fgeom->bottom_right_corner_rounded_radius;
+      const float radius = sqrt(corner) + corner;
+      int i;
+
+      for (i=0; i<corner; i++)
+        {
+          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
+          rect.x = window_width - width;
+          rect.y = window_height - i - 1;
+          rect.width = width;
+          rect.height = 1;
+          
+          cairo_region_union_rectangle (corners_region, &rect);
+        }
+    }
+  
+  bounds_region = cairo_region_create ();
+  
+  rect.x = 0;
+  rect.y = 0;
+  rect.width = window_width;
+  rect.height = window_height;
+
+  cairo_region_union_rectangle (bounds_region, &rect);
+
+  cairo_region_subtract (bounds_region, corners_region);
+
+  cairo_region_destroy (corners_region);
+
+  return bounds_region;
+}
+
+static cairo_region_t *
+get_client_region (MetaFrameGeometry *fgeom,
+                   int                window_width,
+                   int                window_height)
+{
+  cairo_rectangle_int_t rect;
+
+  rect.x = fgeom->left_width;
+  rect.y = fgeom->top_height;
+  rect.width = window_width - fgeom->right_width - rect.x;
+  rect.height = window_height - fgeom->bottom_height - rect.y;
+
+  return cairo_region_create_rectangle (&rect);
+}
+
 void
 meta_frames_apply_shapes (MetaFrames *frames,
                           Window      xwindow,
@@ -775,9 +1022,7 @@ meta_frames_apply_shapes (MetaFrames *frames,
   /* Apply shapes as if window had new_window_width, new_window_height */
   MetaUIFrame *frame;
   MetaFrameGeometry fgeom;
-  XRectangle xrect;
-  Region corners_xregion;
-  Region window_xregion;
+  cairo_region_t *window_region;
   Display *display;
   
   frame = meta_frames_lookup_window (frames, xwindow);
@@ -798,7 +1043,7 @@ meta_frames_apply_shapes (MetaFrames *frames,
           meta_topic (META_DEBUG_SHAPES,
                       "Unsetting shape mask on frame 0x%lx\n",
                       frame->xwindow);
-          
+
           XShapeCombineMask (display, frame->xwindow,
                              ShapeBounding, 0, 0, None, ShapeSet);
           frame->shape_applied = FALSE;
@@ -809,97 +1054,14 @@ meta_frames_apply_shapes (MetaFrames *frames,
                       "Frame 0x%lx still doesn't need a shape mask\n",
                       frame->xwindow);
         }
-      
+
       return; /* nothing to do */
     }
-  
-  corners_xregion = XCreateRegion ();
-  
-  if (fgeom.top_left_corner_rounded_radius != 0)
-    {
-      const int corner = fgeom.top_left_corner_rounded_radius;
-      const float radius = sqrt(corner) + corner;
-      int i;
 
-      for (i=0; i<corner; i++)
-        {
-          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          xrect.x = 0;
-          xrect.y = i;
-          xrect.width = width;
-          xrect.height = 1;
-          
-          XUnionRectWithRegion (&xrect, corners_xregion, corners_xregion);
-        }
-    }
+  window_region = get_bounds_region (frames, frame,
+                                     &fgeom,
+                                     new_window_width, new_window_height);
 
-  if (fgeom.top_right_corner_rounded_radius != 0)
-    {
-      const int corner = fgeom.top_right_corner_rounded_radius;
-      const float radius = sqrt(corner) + corner;
-      int i;
-
-      for (i=0; i<corner; i++)
-        {
-          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          xrect.x = new_window_width - width;
-          xrect.y = i;
-          xrect.width = width;
-          xrect.height = 1;
-          
-          XUnionRectWithRegion (&xrect, corners_xregion, corners_xregion);
-        }
-    }
-
-  if (fgeom.bottom_left_corner_rounded_radius != 0)
-    {
-      const int corner = fgeom.bottom_left_corner_rounded_radius;
-      const float radius = sqrt(corner) + corner;
-      int i;
-
-      for (i=0; i<corner; i++)
-        {
-          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          xrect.x = 0;
-          xrect.y = new_window_height - i - 1;
-          xrect.width = width;
-          xrect.height = 1;
-          
-          XUnionRectWithRegion (&xrect, corners_xregion, corners_xregion);
-        }
-    }
-
-  if (fgeom.bottom_right_corner_rounded_radius != 0)
-    {
-      const int corner = fgeom.bottom_right_corner_rounded_radius;
-      const float radius = sqrt(corner) + corner;
-      int i;
-
-      for (i=0; i<corner; i++)
-        {
-          const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          xrect.x = new_window_width - width;
-          xrect.y = new_window_height - i - 1;
-          xrect.width = width;
-          xrect.height = 1;
-          
-          XUnionRectWithRegion (&xrect, corners_xregion, corners_xregion);
-        }
-    }
-  
-  window_xregion = XCreateRegion ();
-  
-  xrect.x = 0;
-  xrect.y = 0;
-  xrect.width = new_window_width;
-  xrect.height = new_window_height;
-
-  XUnionRectWithRegion (&xrect, window_xregion, window_xregion);
-
-  XSubtractRegion (window_xregion, corners_xregion, window_xregion);
-
-  XDestroyRegion (corners_xregion);
-  
   if (window_has_shape)
     {
       /* The client window is oclock or something and has a shape
@@ -911,7 +1073,7 @@ meta_frames_apply_shapes (MetaFrames *frames,
       XSetWindowAttributes attrs;      
       Window shape_window;
       Window client_window;
-      Region client_xregion;
+      cairo_region_t *client_region;
       GdkScreen *screen;
       int screen_number;
       
@@ -951,21 +1113,16 @@ meta_frames_apply_shapes (MetaFrames *frames,
       /* Punch the client area out of the normal frame shape,
        * then union it with the shape_window's existing shape
        */
-      client_xregion = XCreateRegion ();
-  
-      xrect.x = fgeom.left_width;
-      xrect.y = fgeom.top_height;
-      xrect.width = new_window_width - fgeom.right_width - xrect.x;
-      xrect.height = new_window_height - fgeom.bottom_height - xrect.y;
+      client_region = get_client_region (&fgeom,
+                                         new_window_width,
+                                         new_window_height);
 
-      XUnionRectWithRegion (&xrect, client_xregion, client_xregion);
-      
-      XSubtractRegion (window_xregion, client_xregion, window_xregion);
+      cairo_region_subtract (window_region, client_region);
 
-      XDestroyRegion (client_xregion);
-      
-      XShapeCombineRegion (display, shape_window,
-                           ShapeBounding, 0, 0, window_xregion, ShapeUnion);
+      cairo_region_destroy (client_region);
+
+      apply_cairo_region_to_window (display, shape_window,
+                                    window_region, ShapeUnion);
       
       /* Now copy shape_window shape to the real frame */
       XShapeCombineShape (display, frame->xwindow, ShapeBounding,
@@ -984,14 +1141,33 @@ meta_frames_apply_shapes (MetaFrames *frames,
                   "Frame 0x%lx has shaped corners\n",
                   frame->xwindow);
       
-      XShapeCombineRegion (display, frame->xwindow,
-                           ShapeBounding, 0, 0, window_xregion, ShapeSet);
+      apply_cairo_region_to_window (display, frame->xwindow,
+                                    window_region, ShapeSet);
     }
   
   frame->shape_applied = TRUE;
   
-  XDestroyRegion (window_xregion);
+  cairo_region_destroy (window_region);
 #endif /* HAVE_SHAPE */
+}
+
+cairo_region_t *
+meta_frames_get_frame_bounds (MetaFrames *frames,
+                              Window      xwindow,
+                              int         window_width,
+                              int         window_height)
+{
+  MetaUIFrame *frame;
+  MetaFrameGeometry fgeom;
+
+  frame = meta_frames_lookup_window (frames, xwindow);
+  g_return_val_if_fail (frame != NULL, NULL);
+
+  meta_frames_calc_geometry (frames, frame, &fgeom);
+
+  return get_bounds_region (frames, frame,
+                            &fgeom,
+                            window_width, window_height);
 }
 
 void
@@ -1045,6 +1221,20 @@ meta_frames_set_title (MetaFrames *frames,
       frame->layout = NULL;
     }
 
+  invalidate_whole_window (frames, frame);
+}
+
+void
+meta_frames_update_frame_style (MetaFrames *frames,
+                                Window      xwindow)
+{
+  MetaUIFrame *frame;
+
+  frame = meta_frames_lookup_window (frames, xwindow);
+
+  g_assert (frame);
+
+  meta_frames_attach_style (frames, frame);
   invalidate_whole_window (frames, frame);
 }
 
@@ -1529,7 +1719,6 @@ meta_frames_button_press_event (GtkWidget      *widget,
             control == META_FRAME_CONTROL_RESIZE_W))
     {
       MetaGrabOp op;
-      gboolean titlebar_is_onscreen;
       
       op = META_GRAB_OP_NONE;
       
@@ -1564,28 +1753,16 @@ meta_frames_button_press_event (GtkWidget      *widget,
           break;
         }
 
-      meta_core_get (display, frame->xwindow,
-                     META_CORE_IS_TITLEBAR_ONSCREEN, &titlebar_is_onscreen,
-                     META_CORE_GET_END);
-
-      if (!titlebar_is_onscreen)
-        meta_core_show_window_menu (display,
-                                    frame->xwindow,
-                                    event->x_root,
-                                    event->y_root,
-                                    event->button,
-                                    event->time);
-      else
-        meta_core_begin_grab_op (display,
-                                 frame->xwindow,
-                                 op,
-                                 TRUE,
-                                 TRUE,
-                                 event->button,
-                                 0,
-                                 event->time,
-                                 event->x_root,
-                                 event->y_root);
+      meta_core_begin_grab_op (display,
+                               frame->xwindow,
+                               op,
+                               TRUE,
+                               TRUE,
+                               event->button,
+                               0,
+                               event->time,
+                               event->x_root,
+                               event->y_root);
     }
   else if (control == META_FRAME_CONTROL_TITLE &&
            event->button == 1)
@@ -2444,11 +2621,11 @@ meta_frames_set_window_background (MetaFrames   *frames,
 
   if (frame_exists && style->window_background_color != NULL)
     {
-      GdkColor color;
+      GdkRGBA color;
       GdkVisual *visual;
 
       meta_color_spec_render (style->window_background_color,
-                              GTK_WIDGET (frames),
+                              frame->style,
                               &color);
 
       /* Set A in ARGB to window_background_alpha, if we have ARGB */
@@ -2456,11 +2633,10 @@ meta_frames_set_window_background (MetaFrames   *frames,
       visual = gtk_widget_get_visual (GTK_WIDGET (frames));
       if (gdk_visual_get_depth (visual) == 32) /* we have ARGB */
         {
-          color.pixel = (color.pixel & 0xffffff) &
-            style->window_background_alpha << 24;
+          color.alpha = style->window_background_alpha / 255.0;
         }
 
-      gdk_window_set_background (frame->window, &color);
+      gdk_window_set_background_rgba (frame->window, &color);
     }
   else
     {

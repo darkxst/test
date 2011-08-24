@@ -150,12 +150,14 @@ enum {
   PROP_FULLSCREEN,
   PROP_MAXIMIZED_HORIZONTALLY,
   PROP_MAXIMIZED_VERTICALLY,
+  PROP_MINIMIZED,
   PROP_WINDOW_TYPE,
   PROP_USER_TIME,
   PROP_DEMANDS_ATTENTION,
   PROP_URGENT,
   PROP_MUTTER_HINTS,
-  PROP_APPEARS_FOCUSED
+  PROP_APPEARS_FOCUSED,
+  PROP_WM_CLASS
 };
 
 enum
@@ -181,6 +183,9 @@ meta_window_finalize (GObject *object)
   if (window->mini_icon)
     g_object_unref (G_OBJECT (window->mini_icon));
 
+  if (window->frame_bounds)
+    cairo_region_destroy (window->frame_bounds);
+
   meta_icon_cache_free (&window->icon_cache);
 
   g_free (window->sm_client_id);
@@ -192,6 +197,7 @@ meta_window_finalize (GObject *object)
   g_free (window->title);
   g_free (window->icon_name);
   g_free (window->desc);
+  g_free (window->gtk_theme_variant);
 }
 
 static void
@@ -225,6 +231,9 @@ meta_window_get_property(GObject         *object,
     case PROP_MAXIMIZED_VERTICALLY:
       g_value_set_boolean (value, win->maximized_vertically);
       break;
+    case PROP_MINIMIZED:
+      g_value_set_boolean (value, win->minimized);
+      break;
     case PROP_WINDOW_TYPE:
       g_value_set_enum (value, win->type);
       break;
@@ -242,6 +251,9 @@ meta_window_get_property(GObject         *object,
       break;
     case PROP_APPEARS_FOCUSED:
       g_value_set_boolean (value, meta_window_appears_focused (win));
+      break;
+    case PROP_WM_CLASS:
+      g_value_set_string (value, win->res_class);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -327,6 +339,13 @@ meta_window_class_init (MetaWindowClass *klass)
                                                          "Whether window is maximized vertically",
                                                          FALSE,
                                                          G_PARAM_READABLE));
+  g_object_class_install_property (object_class,
+                                   PROP_MINIMIZED,
+                                   g_param_spec_boolean ("minimized",
+                                                         "Minimizing",
+                                                         "Whether window is minimized",
+                                                         FALSE,
+                                                         G_PARAM_READABLE));
 
   g_object_class_install_property (object_class,
                                    PROP_WINDOW_TYPE,
@@ -377,6 +396,14 @@ meta_window_class_init (MetaWindowClass *klass)
                                                          "Whether the window is drawn as being focused",
                                                          FALSE,
                                                          G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_WM_CLASS,
+                                   g_param_spec_string ("wm-class",
+                                                        "WM_CLASS",
+                                                        "Contents of the WM_CLASS property of this window",
+                                                        NULL,
+                                                        G_PARAM_READABLE));
 
   window_signals[WORKSPACE_CHANGED] =
     g_signal_new ("workspace-changed",
@@ -1493,6 +1520,8 @@ meta_window_unmanage (MetaWindow  *window,
    * on what gets focused, maintaining sloppy focus
    * invariants.
    */
+  if (meta_window_appears_focused (window))
+    meta_window_propagate_focus_appearance (window, FALSE);
   if (window->has_focus)
     {
       meta_topic (META_DEBUG_FOCUS,
@@ -1501,7 +1530,6 @@ meta_window_unmanage (MetaWindow  *window,
       meta_workspace_focus_default_window (window->screen->active_workspace,
                                            window,
                                            timestamp);
-      meta_window_propagate_focus_appearance (window, FALSE);
     }
   else if (window->display->expected_focus_window == window)
     {
@@ -3131,6 +3159,7 @@ meta_window_minimize (MetaWindow  *window)
                       "Minimizing window %s which doesn't have the focus\n",
                       window->desc);
         }
+      g_object_notify (G_OBJECT (window), "minimized");
     }
 }
 
@@ -3148,6 +3177,7 @@ meta_window_unminimize (MetaWindow  *window)
       meta_window_foreach_transient (window,
                                      queue_calc_showing_func,
                                      NULL);
+      g_object_notify (G_OBJECT (window), "minimized");
     }
 }
 
@@ -4185,7 +4215,7 @@ move_attached_dialog (MetaWindow *window,
 {
   MetaWindow *parent = meta_window_get_transient_for (window);
 
-  if (window->type == META_WINDOW_MODAL_DIALOG && parent && parent != window)
+  if (window->type == META_WINDOW_MODAL_DIALOG && parent)
     /* It ignores x,y for such a dialog  */
     meta_window_move (window, FALSE, 0, 0);
 
@@ -4295,6 +4325,7 @@ meta_window_move_resize_internal (MetaWindow          *window,
   int frame_size_dy;
   int size_dx;
   int size_dy;
+  gboolean frame_shape_changed = FALSE;
   gboolean is_configure_request;
   gboolean do_gravity_adjust;
   gboolean is_user_action;
@@ -4598,9 +4629,9 @@ meta_window_move_resize_internal (MetaWindow          *window,
     meta_window_set_gravity (window, StaticGravity);
 
   if (configure_frame_first && window->frame)
-    meta_frame_sync_to_window (window->frame,
-                               gravity,
-                               need_move_frame, need_resize_frame);
+    frame_shape_changed = meta_frame_sync_to_window (window->frame,
+                                                     gravity,
+                                                     need_move_frame, need_resize_frame);
 
   values.border_width = 0;
   values.x = client_move_x;
@@ -4655,9 +4686,9 @@ meta_window_move_resize_internal (MetaWindow          *window,
     }
 
   if (!configure_frame_first && window->frame)
-    meta_frame_sync_to_window (window->frame,
-                               gravity,
-                               need_move_frame, need_resize_frame);
+    frame_shape_changed = meta_frame_sync_to_window (window->frame,
+                                                     gravity,
+                                                     need_move_frame, need_resize_frame);
 
   /* Put gravity back to be nice to lesser window managers */
   if (use_static_gravity)
@@ -4699,6 +4730,12 @@ meta_window_move_resize_internal (MetaWindow          *window,
    *      server-side size/pos of window->xwindow and frame->xwindow
    *   b) all constraints are obeyed by window->rect and frame->rect
    */
+
+  if (frame_shape_changed && window->frame_bounds)
+    {
+      cairo_region_destroy (window->frame_bounds);
+      window->frame_bounds = NULL;
+    }
 
   if (meta_prefs_get_attach_modal_dialogs ())
     meta_window_foreach_transient (window, move_attached_dialog, NULL);
@@ -6379,14 +6416,29 @@ meta_window_client_message (MetaWindow *window,
   return FALSE;
 }
 
+/**
+ * meta_window_propagate_focus_appearance:
+ * @window: the window to start propagating from
+ * @focused: %TRUE if @window's ancestors should appear focused,
+ *   %FALSE if they should not.
+ *
+ * Adjusts the value of #MetaWindow:appears-focused on @window's
+ * ancestors (but not @window itself). If @focused is %TRUE, each of
+ * @window's ancestors will have its %attached_focus_window field set
+ * to the current %focus_window. If @focused if %FALSE, each of
+ * @window's ancestors will have its %attached_focus_window field
+ * cleared if it is currently %focus_window.
+ */
 void
 meta_window_propagate_focus_appearance (MetaWindow *window,
                                         gboolean    focused)
 {
-  MetaWindow *child, *parent;
+  MetaWindow *child, *parent, *focus_window;
 
   if (!meta_prefs_get_attach_modal_dialogs ())
     return;
+
+  focus_window = window->display->focus_window;
 
   child = window;
   parent = meta_window_get_transient_for (child);
@@ -6396,14 +6448,14 @@ meta_window_propagate_focus_appearance (MetaWindow *window,
 
       if (focused)
         {
-          if (parent->attached_focus_window == window)
+          if (parent->attached_focus_window == focus_window)
             break;
           child_focus_state_changed = (parent->attached_focus_window == NULL);
-          parent->attached_focus_window = window;
+          parent->attached_focus_window = focus_window;
         }
       else
         {
-          if (parent->attached_focus_window != window)
+          if (parent->attached_focus_window != focus_window)
             break;
           child_focus_state_changed = (parent->attached_focus_window != NULL);
           parent->attached_focus_window = NULL;
@@ -6598,6 +6650,8 @@ meta_window_notify_focus (MetaWindow *window,
           meta_topic (META_DEBUG_FOCUS,
                       "* Focus --> NULL (was %s)\n", window->desc);
 
+          meta_window_propagate_focus_appearance (window, FALSE);
+
           window->display->focus_window = NULL;
           g_object_notify (G_OBJECT (window->display), "focus-window");
           window->has_focus = FALSE;
@@ -6608,7 +6662,6 @@ meta_window_notify_focus (MetaWindow *window,
               if (window->frame)
                 meta_frame_queue_draw (window->frame);
             }
-          meta_window_propagate_focus_appearance (window, FALSE);
 
           meta_error_trap_push (window->display);
           XUninstallColormap (window->display->xdisplay,
@@ -8692,8 +8745,7 @@ update_resize (MetaWindow *window,
        */
       if (old.width != new_w || old.height != new_h)
         {
-          if ((window->display->grab_resize_unmaximize == new_unmaximize))
-            meta_window_resize_with_gravity (window, TRUE, new_w, new_h, gravity);
+          meta_window_resize_with_gravity (window, TRUE, new_w, new_h, gravity);
         }
     }
   else
@@ -9222,46 +9274,17 @@ meta_window_foreach_ancestor (MetaWindow            *window,
                               void                  *user_data)
 {
   MetaWindow *w;
-  MetaWindow *tortoise;
 
   w = window;
-  tortoise = window;
-  while (TRUE)
+  do
     {
       if (w->xtransient_for == None ||
           w->transient_parent_is_root_window)
         break;
 
       w = meta_display_lookup_x_window (w->display, w->xtransient_for);
-
-      if (w == NULL || w == tortoise)
-        break;
-
-      if (!(* func) (w, user_data))
-        break;
-
-      if (w->xtransient_for == None ||
-          w->transient_parent_is_root_window)
-        break;
-
-      w = meta_display_lookup_x_window (w->display, w->xtransient_for);
-
-      if (w == NULL || w == tortoise)
-        break;
-
-      if (!(* func) (w, user_data))
-        break;
-
-      tortoise = meta_display_lookup_x_window (tortoise->display,
-                                               tortoise->xtransient_for);
-
-      /* "w" should have already covered all ground covered by the
-       * tortoise, so the following must hold.
-       */
-      g_assert (tortoise != NULL);
-      g_assert (tortoise->xtransient_for != None);
-      g_assert (!tortoise->transient_parent_is_root_window);
     }
+  while (w && (* func) (w, user_data));
 }
 
 typedef struct
@@ -10203,4 +10226,25 @@ meta_window_get_frame_type (MetaWindow *window)
     {
       return base_type;
     }
+}
+
+/**
+ * meta_window_get_frame_bounds:
+ *
+ * Gets a region representing the outer bounds of the window's frame.
+ *
+ * Return value: (transfer none) (allow-none): a #cairo_region_t
+ *  holding the outer bounds of the window, or %NULL if the window
+ *  doesn't have a frame.
+ */
+cairo_region_t *
+meta_window_get_frame_bounds (MetaWindow *window)
+{
+  if (!window->frame_bounds)
+    {
+      if (window->frame)
+        window->frame_bounds = meta_frame_get_frame_bounds (window->frame);
+    }
+
+  return window->frame_bounds;
 }

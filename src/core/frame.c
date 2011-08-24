@@ -117,11 +117,6 @@ meta_window_ensure_frame (MetaWindow *window)
   
   meta_display_register_x_window (window->display, &frame->xwindow, window);
 
-  /* Now that frame->xwindow is registered with window, we can set its
-   * background.
-   */
-  meta_ui_reset_frame_bg (window->screen->ui, frame->xwindow);
-
   /* Reparent the client window; it may be destroyed,
    * thus the error trap. We'll get a destroy notify later
    * and free everything. Comment in FVWM source code says
@@ -157,6 +152,12 @@ meta_window_ensure_frame (MetaWindow *window)
   
   /* stick frame to the window */
   window->frame = frame;
+
+  /* Now that frame->xwindow is registered with window, we can set its
+   * style and background.
+   */
+  meta_ui_update_frame_style (window->screen->ui, frame->xwindow);
+  meta_ui_reset_frame_bg (window->screen->ui, frame->xwindow);
   
   if (window->title)
     meta_ui_set_frame_title (window->screen->ui,
@@ -328,7 +329,7 @@ meta_frame_calc_geometry (MetaFrame         *frame,
   *geomp = geom;
 }
 
-static void
+static gboolean
 update_shape (MetaFrame *frame)
 {
   if (frame->need_reapply_frame_shape)
@@ -339,10 +340,14 @@ update_shape (MetaFrame *frame)
                                  frame->rect.height,
                                  frame->window->has_shape);
       frame->need_reapply_frame_shape = FALSE;
+
+      return TRUE;
     }
+  else
+    return FALSE;
 }
 
-void
+gboolean
 meta_frame_sync_to_window (MetaFrame *frame,
                            int        resize_gravity,
                            gboolean   need_move,
@@ -350,8 +355,7 @@ meta_frame_sync_to_window (MetaFrame *frame,
 {
   if (!(need_move || need_resize))
     {
-      update_shape (frame);
-      return;
+      return update_shape (frame);
     }
 
   meta_topic (META_DEBUG_GEOMETRY,
@@ -401,6 +405,17 @@ meta_frame_sync_to_window (MetaFrame *frame,
         meta_ui_repaint_frame (frame->window->screen->ui,
                                frame->xwindow);
     }
+
+  return need_resize;
+}
+
+cairo_region_t *
+meta_frame_get_frame_bounds (MetaFrame *frame)
+{
+  return meta_ui_get_frame_bounds (frame->window->screen->ui,
+                                   frame->xwindow,
+                                   frame->rect.width,
+                                   frame->rect.height);
 }
 
 void

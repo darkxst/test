@@ -11,6 +11,7 @@
 #include <meta/compositor-mutter.h>
 #include "xprops.h"
 #include <meta/prefs.h>
+#include <meta/main.h>
 #include <meta/meta-shadow-factory.h>
 #include "meta-window-actor-private.h"
 #include "meta-window-group.h"
@@ -474,20 +475,43 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
   gint            width, height;
   XWindowAttributes attr;
   long            event_mask;
+  guint           n_retries;
+  guint           max_retries;
 
   /* Check if the screen is already managed */
   if (meta_screen_get_compositor_data (screen))
     return;
 
-  meta_error_trap_push_with_return (display);
-  XCompositeRedirectSubwindows (xdisplay, xroot, CompositeRedirectManual);
-  XSync (xdisplay, FALSE);
+  if (meta_get_replace_current_wm ())
+    max_retries = 5;
+  else
+    max_retries = 1;
 
-  if (meta_error_trap_pop_with_return (display))
+  n_retries = 0;
+
+  /* Some compositors (like old versions of Mutter) might not properly unredirect
+   * subwindows before destroying the WM selection window; so we wait a while
+   * for such a compositor to exit before giving up.
+   */
+  while (TRUE)
     {
-      g_warning ("Another compositing manager is running on screen %i",
-                 screen_number);
-      return;
+      meta_error_trap_push_with_return (display);
+      XCompositeRedirectSubwindows (xdisplay, xroot, CompositeRedirectManual);
+      XSync (xdisplay, FALSE);
+
+      if (!meta_error_trap_pop_with_return (display))
+        break;
+
+      if (n_retries == max_retries)
+        {
+          /* This probably means that a non-WM compositor like xcompmgr is running;
+           * we have no way to get it to exit */
+          meta_fatal (_("Another compositing manager is already running on screen %i on display \"%s\"."),
+                      screen_number, display->name);
+        }
+
+      n_retries++;
+      g_usleep (G_USEC_PER_SEC);
     }
 
   info = g_new0 (MetaCompScreen, 1);
@@ -587,6 +611,14 @@ void
 meta_compositor_unmanage_screen (MetaCompositor *compositor,
                                  MetaScreen     *screen)
 {
+  MetaDisplay    *display       = meta_screen_get_display (screen);
+  Display        *xdisplay      = meta_display_get_xdisplay (display);
+  Window          xroot         = meta_screen_get_xroot (screen);
+
+  /* This is the most important part of cleanup - we have to do this
+   * before giving up the window manager selection or the next
+   * window manager won't be able to redirect subwindows */
+  XCompositeUnredirectSubwindows (xdisplay, xroot, CompositeRedirectManual);
 }
 
 void

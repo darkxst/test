@@ -845,6 +845,8 @@ reload_wm_class (MetaWindow    *window,
 
       if (value->v.class_hint.res_class)
         window->res_class = g_strdup (value->v.class_hint.res_class);
+
+      g_object_notify (G_OBJECT (window), "wm-class");
     }
 
   meta_verbose ("Window %s class: '%s' name: '%s'\n",
@@ -1466,7 +1468,9 @@ reload_transient_for (MetaWindow    *window,
                       MetaPropValue *value,
                       gboolean       initial)
 {
-  if (window->has_focus && window->xtransient_for != None)
+  MetaWindow *parent = NULL;
+
+  if (meta_window_appears_focused (window) && window->xtransient_for != None)
     meta_window_propagate_focus_appearance (window, FALSE);
 
   window->xtransient_for = None;
@@ -1475,14 +1479,33 @@ reload_transient_for (MetaWindow    *window,
     window->xtransient_for = value->v.xwindow;
 
   /* Make sure transient_for is valid */
-  if (window->xtransient_for != None &&
-      meta_display_lookup_x_window (window->display, 
-                                    window->xtransient_for) == NULL)
+  if (window->xtransient_for != None)
     {
-      meta_warning (_("Invalid WM_TRANSIENT_FOR window 0x%lx specified "
-                      "for %s.\n"),
-                    window->xtransient_for, window->desc);
-      window->xtransient_for = None;
+      parent = meta_display_lookup_x_window (window->display,
+                                             window->xtransient_for);
+      if (!parent)
+        {
+          meta_warning (_("Invalid WM_TRANSIENT_FOR window 0x%lx specified "
+                          "for %s.\n"),
+                        window->xtransient_for, window->desc);
+          window->xtransient_for = None;
+        }
+    }
+
+  /* Make sure there is not a loop */
+  while (parent)
+    {
+      if (parent == window)
+        {
+          meta_warning (_("WM_TRANSIENT_FOR window 0x%lx for %s "
+                          "would create loop.\n"),
+                        window->xtransient_for, window->desc);
+          window->xtransient_for = None;
+          break;
+        }
+
+      parent = meta_display_lookup_x_window (parent->display,
+                                             parent->xtransient_for);
     }
 
   window->transient_parent_is_root_window =
@@ -1513,8 +1536,37 @@ reload_transient_for (MetaWindow    *window,
   if (!window->constructing && !window->override_redirect)
     meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
 
-  if (window->has_focus && window->xtransient_for != None)
+  if (meta_window_appears_focused (window) && window->xtransient_for != None)
     meta_window_propagate_focus_appearance (window, TRUE);
+}
+
+static void
+reload_gtk_theme_variant (MetaWindow    *window,
+                          MetaPropValue *value,
+                          gboolean       initial)
+{
+  char     *requested_variant = NULL;
+  char     *current_variant   = window->gtk_theme_variant;
+
+  if (value->type != META_PROP_VALUE_INVALID)
+    {
+      requested_variant = value->v.str;
+      meta_verbose ("Requested \"%s\" theme variant for window %s.\n",
+                    requested_variant, window->desc);
+    }
+
+  if (g_strcmp0 (requested_variant, current_variant))
+    {
+      g_free (current_variant);
+
+      if (requested_variant)
+        window->gtk_theme_variant = g_strdup (requested_variant);
+      else
+        window->gtk_theme_variant = NULL;
+
+      if (window->frame)
+        meta_ui_update_frame_style (window->screen->ui, window->frame->xwindow);
+    }
 }
 
 /**
@@ -1569,6 +1621,7 @@ meta_display_init_window_prop_hooks (MetaDisplay *display)
     { display->atom__NET_WM_STATE,     META_PROP_VALUE_ATOM_LIST, reload_net_wm_state,     TRUE,  FALSE },
     { display->atom__MOTIF_WM_HINTS,   META_PROP_VALUE_MOTIF_HINTS, reload_mwm_hints,      TRUE,  FALSE },
     { XA_WM_TRANSIENT_FOR,             META_PROP_VALUE_WINDOW,    reload_transient_for,    TRUE,  FALSE },
+    { display->atom__GTK_THEME_VARIANT, META_PROP_VALUE_UTF8,     reload_gtk_theme_variant, TRUE, FALSE },
     { display->atom__NET_WM_USER_TIME_WINDOW, META_PROP_VALUE_WINDOW, reload_net_wm_user_time_window, TRUE, FALSE },
     { display->atom_WM_STATE,          META_PROP_VALUE_INVALID,  NULL,                     FALSE, FALSE },
     { display->atom__NET_WM_ICON,      META_PROP_VALUE_INVALID,  reload_net_wm_icon,       FALSE, FALSE },
