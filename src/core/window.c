@@ -70,6 +70,8 @@ static void     set_wm_state_on_xwindow   (MetaDisplay    *display,
 static void     set_wm_state              (MetaWindow     *window,
                                            int             state);
 static void     set_net_wm_state          (MetaWindow     *window);
+static void     meta_window_set_above     (MetaWindow     *window,
+                                           gboolean        new_value);
 
 static void     send_configure_notify     (MetaWindow     *window);
 static gboolean process_property_notify   (MetaWindow     *window,
@@ -157,6 +159,8 @@ enum {
   PROP_URGENT,
   PROP_MUTTER_HINTS,
   PROP_APPEARS_FOCUSED,
+  PROP_RESIZEABLE,
+  PROP_ABOVE,
   PROP_WM_CLASS
 };
 
@@ -254,6 +258,12 @@ meta_window_get_property(GObject         *object,
       break;
     case PROP_WM_CLASS:
       g_value_set_string (value, win->res_class);
+      break;
+    case PROP_RESIZEABLE:
+      g_value_set_boolean (value, win->has_resize_func);
+      break;
+    case PROP_ABOVE:
+      g_value_set_boolean (value, win->wm_state_above);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -394,6 +404,22 @@ meta_window_class_init (MetaWindowClass *klass)
                                    g_param_spec_boolean ("appears-focused",
                                                          "Appears focused",
                                                          "Whether the window is drawn as being focused",
+                                                         FALSE,
+                                                         G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_RESIZEABLE,
+                                   g_param_spec_boolean ("resizeable",
+                                                         "Resizeable",
+                                                         "Whether the window can be resized",
+                                                         FALSE,
+                                                         G_PARAM_READABLE));
+
+  g_object_class_install_property (object_class,
+                                   PROP_ABOVE,
+                                   g_param_spec_boolean ("above",
+                                                         "Above",
+                                                         "Whether the window is shown as always-on-top",
                                                          FALSE,
                                                          G_PARAM_READABLE));
 
@@ -641,6 +667,31 @@ maybe_filter_window (MetaDisplay       *display,
   meta_error_trap_pop (display);
 
   return filtered;
+}
+
+gboolean
+meta_window_should_attach_to_parent (MetaWindow *window)
+{
+  MetaWindow *parent;
+
+  if (!meta_prefs_get_attach_modal_dialogs () ||
+      window->type != META_WINDOW_MODAL_DIALOG)
+    return FALSE;
+
+  parent = meta_window_get_transient_for (window);
+  if (!parent)
+    return FALSE;
+
+  switch (parent->type)
+    {
+    case META_WINDOW_NORMAL:
+    case META_WINDOW_DIALOG:
+    case META_WINDOW_MODAL_DIALOG:
+      return TRUE;
+
+    default:
+      return FALSE;
+    }
 }
 
 MetaWindow*
@@ -1108,6 +1159,10 @@ meta_window_new_with_attrs (MetaDisplay       *display,
         meta_display_get_current_time_roundtrip (window->display);
   }
 
+  window->attached = meta_window_should_attach_to_parent (window);
+  if (window->attached)
+    recalc_window_features (window);
+
   if (window->decorated)
     meta_window_ensure_frame (window);
 
@@ -1464,6 +1519,24 @@ meta_window_apply_session_info (MetaWindow *window,
     }
 }
 
+static gboolean
+detach_foreach_func (MetaWindow *window,
+                     void       *data)
+{
+  GList **children = data;
+  MetaWindow *parent;
+
+  if (window->attached)
+    {
+      /* Only return the immediate children of the window being unmanaged */
+      parent = meta_window_get_transient_for (window);
+      if (parent->unmanaging)
+        *children = g_list_prepend (*children, window);
+    }
+
+  return TRUE;
+}
+
 void
 meta_window_unmanage (MetaWindow  *window,
                       guint32      timestamp)
@@ -1493,6 +1566,21 @@ meta_window_unmanage (MetaWindow  *window,
               window->desc);
 
   window->unmanaging = TRUE;
+
+  if (meta_prefs_get_attach_modal_dialogs ())
+    {
+      GList *attached_children = NULL, *iter;
+
+      /* Detach any attached dialogs by unmapping and letting them
+       * be remapped after @window is destroyed.
+       */
+      meta_window_foreach_transient (window,
+                                     detach_foreach_func,
+                                     &attached_children);
+      for (iter = attached_children; iter; iter = iter->next)
+        meta_window_unmanage (iter->data, timestamp);
+      g_list_free (attached_children);
+    }
 
   if (window->fullscreen)
     {
@@ -1652,8 +1740,12 @@ meta_window_unmanage (MetaWindow  *window,
           meta_error_trap_pop (window->display);
         }
 
-      /* And we need to be sure the window is mapped so other WMs
-       * know that it isn't Withdrawn
+      /* If we're unmanaging a window that is not withdrawn, then
+       * either (a) mutter is exiting, in which case we need to map
+       * the window so the next WM will know that it's not Withdrawn,
+       * or (b) we want to create a new MetaWindow to replace the
+       * current one, which will happen automatically if we re-map
+       * the X Window.
        */
       meta_error_trap_push (window->display);
       XMapWindow (window->display->xdisplay,
@@ -3308,14 +3400,6 @@ meta_window_maximize_internal (MetaWindow        *window,
   if (maximize_horizontally || maximize_vertically)
     window->force_save_user_rect = FALSE;
 
-  /* Fix for #336850: If the frame shape isn't reapplied, it is
-   * possible that the frame will retains its rounded corners. That
-   * happens if the client's size when maximized equals the unmaximized
-   * size.
-   */
-  if (window->frame)
-    window->frame->need_reapply_frame_shape = TRUE;
-
   recalc_window_features (window);
   set_net_wm_state (window);
 
@@ -3512,12 +3596,12 @@ meta_window_can_tile_side_by_side (MetaWindow *window)
 
   if (window->frame)
     {
-      MetaFrameGeometry fgeom;
+      MetaFrameBorders borders;
 
-      meta_frame_calc_geometry (window->frame, &fgeom);
+      meta_frame_calc_borders (window->frame, &borders);
 
-      tile_area.width  -= (fgeom.left_width + fgeom.right_width);
-      tile_area.height -= (fgeom.top_height + fgeom.bottom_height);
+      tile_area.width  -= (borders.visible.left + borders.visible.right);
+      tile_area.height -= (borders.visible.top + borders.visible.bottom);
     }
 
   return tile_area.width >= window->size_hints.min_width &&
@@ -3722,10 +3806,8 @@ meta_window_make_above (MetaWindow  *window)
 {
   g_return_if_fail (!window->override_redirect);
 
-  window->wm_state_above = TRUE;
-  meta_window_update_layer (window);
+  meta_window_set_above (window, TRUE);
   meta_window_raise (window);
-  set_net_wm_state (window);
 }
 
 void
@@ -3733,10 +3815,22 @@ meta_window_unmake_above (MetaWindow  *window)
 {
   g_return_if_fail (!window->override_redirect);
 
-  window->wm_state_above = FALSE;
+  meta_window_set_above (window, FALSE);
   meta_window_raise (window);
+}
+
+static void
+meta_window_set_above (MetaWindow *window,
+                       gboolean    new_value)
+{
+  new_value = new_value != FALSE;
+  if (new_value == window->wm_state_above)
+    return;
+
+  window->wm_state_above = new_value;
   meta_window_update_layer (window);
   set_net_wm_state (window);
+  g_object_notify (G_OBJECT (window), "above");
 }
 
 void
@@ -4040,7 +4134,7 @@ meta_window_activate_with_workspace (MetaWindow     *window,
  */
 static void
 adjust_for_gravity (MetaWindow        *window,
-                    MetaFrameGeometry *fgeom,
+                    MetaFrameBorders  *borders,
                     gboolean           coords_assume_border,
                     int                gravity,
                     MetaRectangle     *rect)
@@ -4055,12 +4149,12 @@ adjust_for_gravity (MetaWindow        *window,
   else
     bw = 0;
 
-  if (fgeom)
+  if (borders)
     {
-      child_x = fgeom->left_width;
-      child_y = fgeom->top_height;
-      frame_width = child_x + rect->width + fgeom->right_width;
-      frame_height = child_y + rect->height + fgeom->bottom_height;
+      child_x = borders->total.left;
+      child_y = borders->total.top;
+      frame_width = child_x + rect->width + borders->total.left;
+      frame_height = child_y + rect->height + borders->total.top;
     }
   else
     {
@@ -4210,12 +4304,10 @@ send_sync_request (MetaWindow *window)
 #endif
 
 static gboolean
-move_attached_dialog (MetaWindow *window,
-                      void       *data)
+maybe_move_attached_dialog (MetaWindow *window,
+                            void       *data)
 {
-  MetaWindow *parent = meta_window_get_transient_for (window);
-
-  if (window->type == META_WINDOW_MODAL_DIALOG && parent)
+  if (meta_window_is_attached_dialog (window))
     /* It ignores x,y for such a dialog  */
     meta_window_move (window, FALSE, 0, 0);
 
@@ -4316,7 +4408,7 @@ meta_window_move_resize_internal (MetaWindow          *window,
   XWindowChanges values;
   unsigned int mask;
   gboolean need_configure_notify;
-  MetaFrameGeometry fgeom;
+  MetaFrameBorders borders;
   gboolean need_move_client = FALSE;
   gboolean need_move_frame = FALSE;
   gboolean need_resize_client = FALSE;
@@ -4361,8 +4453,8 @@ meta_window_move_resize_internal (MetaWindow          *window,
               old_rect.x, old_rect.y, old_rect.width, old_rect.height);
 
   if (window->frame)
-    meta_frame_calc_geometry (window->frame,
-                              &fgeom);
+    meta_frame_calc_borders (window->frame,
+                             &borders);
 
   new_rect.x = root_x_nw;
   new_rect.y = root_y_nw;
@@ -4389,7 +4481,7 @@ meta_window_move_resize_internal (MetaWindow          *window,
   else if (is_configure_request || do_gravity_adjust)
     {
       adjust_for_gravity (window,
-                          window->frame ? &fgeom : NULL,
+                          window->frame ? &borders : NULL,
                           /* configure request coords assume
                            * the border width existed
                            */
@@ -4404,7 +4496,7 @@ meta_window_move_resize_internal (MetaWindow          *window,
     }
 
   meta_window_constrain (window,
-                         window->frame ? &fgeom : NULL,
+                         window->frame ? &borders : NULL,
                          flags,
                          gravity,
                          &old_rect,
@@ -4426,12 +4518,12 @@ meta_window_move_resize_internal (MetaWindow          *window,
     {
       int new_w, new_h;
 
-      new_w = window->rect.width + fgeom.left_width + fgeom.right_width;
+      new_w = window->rect.width + borders.total.left + borders.total.right;
 
       if (window->shaded)
-        new_h = fgeom.top_height;
+        new_h = borders.total.top;
       else
-        new_h = window->rect.height + fgeom.top_height + fgeom.bottom_height;
+        new_h = window->rect.height + borders.total.top + borders.total.bottom;
 
       frame_size_dx = new_w - window->frame->rect.width;
       frame_size_dy = new_h - window->frame->rect.height;
@@ -4473,8 +4565,8 @@ meta_window_move_resize_internal (MetaWindow          *window,
       int frame_pos_dx, frame_pos_dy;
 
       /* Compute new frame coords */
-      new_x = root_x_nw - fgeom.left_width;
-      new_y = root_y_nw - fgeom.top_height;
+      new_x = root_x_nw - borders.total.left;
+      new_y = root_y_nw - borders.total.top;
 
       frame_pos_dx = new_x - window->frame->rect.x;
       frame_pos_dy = new_y - window->frame->rect.y;
@@ -4497,8 +4589,8 @@ meta_window_move_resize_internal (MetaWindow          *window,
        * remember they are the server coords
        */
 
-      new_x = fgeom.left_width;
-      new_y = fgeom.top_height;
+      new_x = borders.total.left;
+      new_y = borders.total.top;
 
       if (need_resize_frame && need_move_frame &&
           static_gravity_works (window->display))
@@ -4569,15 +4661,15 @@ meta_window_move_resize_internal (MetaWindow          *window,
   /* If frame extents have changed, fill in other frame fields and
      change frame's extents property. */
   if (window->frame &&
-      (window->frame->child_x != fgeom.left_width ||
-       window->frame->child_y != fgeom.top_height ||
-       window->frame->right_width != fgeom.right_width ||
-       window->frame->bottom_height != fgeom.bottom_height))
+      (window->frame->child_x != borders.total.left ||
+       window->frame->child_y != borders.total.top ||
+       window->frame->right_width != borders.total.right ||
+       window->frame->bottom_height != borders.total.bottom))
     {
-      window->frame->child_x = fgeom.left_width;
-      window->frame->child_y = fgeom.top_height;
-      window->frame->right_width = fgeom.right_width;
-      window->frame->bottom_height = fgeom.bottom_height;
+      window->frame->child_x = borders.total.left;
+      window->frame->child_y = borders.total.top;
+      window->frame->right_width = borders.total.right;
+      window->frame->bottom_height = borders.total.bottom;
 
       update_net_frame_extents (window);
     }
@@ -4737,8 +4829,7 @@ meta_window_move_resize_internal (MetaWindow          *window,
       window->frame_bounds = NULL;
     }
 
-  if (meta_prefs_get_attach_modal_dialogs ())
-    meta_window_foreach_transient (window, move_attached_dialog, NULL);
+  meta_window_foreach_transient (window, maybe_move_attached_dialog, NULL);
 }
 
 /**
@@ -5130,18 +5221,49 @@ meta_window_get_geometry (MetaWindow  *window,
 }
 
 /**
+ * meta_window_get_input_rect:
+ * @window: a #MetaWindow
+ * @rect: (out): pointer to an allocated #MetaRectangle
+ *
+ * Gets the rectangle that bounds @window that is responsive to mouse events.
+ * This includes decorations - the visible portion of its border - and (if
+ * present) any invisible area that we make make responsive to mouse clicks in
+ * order to allow convenient border dragging.
+ */
+void
+meta_window_get_input_rect (const MetaWindow *window,
+                            MetaRectangle    *rect)
+{
+  if (window->frame)
+    *rect = window->frame->rect;
+  else
+    *rect = window->rect;
+}
+
+/**
  * meta_window_get_outer_rect:
  * @window: a #MetaWindow
  * @rect: (out): pointer to an allocated #MetaRectangle
  *
- * Gets the rectangle that bounds @window and, if decorated, its decorations.
+ * Gets the rectangle that bounds @window that is responsive to mouse events.
+ * This includes only what is visible; it doesn't include any extra reactive
+ * area we add to the edges of windows.
  */
 void
 meta_window_get_outer_rect (const MetaWindow *window,
                             MetaRectangle    *rect)
 {
   if (window->frame)
-    *rect = window->frame->rect;
+    {
+      MetaFrameBorders borders;
+      *rect = window->frame->rect;
+      meta_frame_calc_borders (window->frame, &borders);
+
+      rect->x += borders.invisible.left;
+      rect->y += borders.invisible.top;
+      rect->width  -= borders.invisible.left + borders.invisible.right;
+      rect->height -= borders.invisible.top  + borders.invisible.bottom;
+    }
   else
     *rect = window->rect;
 }
@@ -6154,12 +6276,9 @@ meta_window_client_message (MetaWindow *window,
       if (first == display->atom__NET_WM_STATE_ABOVE ||
           second == display->atom__NET_WM_STATE_ABOVE)
         {
-          window->wm_state_above =
+          meta_window_set_above(window,
             (action == _NET_WM_STATE_ADD) ||
-            (action == _NET_WM_STATE_TOGGLE && !window->wm_state_above);
-
-          meta_window_update_layer (window);
-          set_net_wm_state (window);
+            (action == _NET_WM_STATE_TOGGLE && !window->wm_state_above));
         }
 
       if (first == display->atom__NET_WM_STATE_BELOW ||
@@ -6435,14 +6554,11 @@ meta_window_propagate_focus_appearance (MetaWindow *window,
 {
   MetaWindow *child, *parent, *focus_window;
 
-  if (!meta_prefs_get_attach_modal_dialogs ())
-    return;
-
   focus_window = window->display->focus_window;
 
   child = window;
   parent = meta_window_get_transient_for (child);
-  while (parent && (!focused || child->type == META_WINDOW_MODAL_DIALOG))
+  while (parent && (!focused || meta_window_is_attached_dialog (child)))
     {
       gboolean child_focus_state_changed;
 
@@ -7580,12 +7696,8 @@ recalc_window_features (MetaWindow *window)
   if (window->type == META_WINDOW_TOOLBAR)
     window->decorated = FALSE;
 
-  if (window->type == META_WINDOW_MODAL_DIALOG && meta_prefs_get_attach_modal_dialogs ())
-    {
-      MetaWindow *parent = meta_window_get_transient_for (window);
-      if (parent)
-        window->border_only = TRUE;
-    }
+  if (meta_window_is_attached_dialog (window))
+    window->border_only = TRUE;
 
   if (window->type == META_WINDOW_DESKTOP ||
       window->type == META_WINDOW_DOCK ||
@@ -7733,6 +7845,9 @@ recalc_window_features (MetaWindow *window)
       old_has_shade_func != window->has_shade_func       ||
       old_always_sticky != window->always_sticky)
     set_allowed_actions_hint (window);
+
+  if (window->has_resize_func != old_has_resize_func)
+    g_object_notify (G_OBJECT (window), "resizeable");
 
   /* FIXME perhaps should ensure if we don't have a shade func,
    * we aren't shaded, etc.
@@ -8567,9 +8682,7 @@ update_resize (MetaWindow *window,
    * size changes apply to both sides, so that the dialog
    * remains centered to the parent.
    */
-  if (window->type == META_WINDOW_MODAL_DIALOG &&
-      meta_prefs_get_attach_modal_dialogs () &&
-      meta_window_get_transient_for (window) != NULL)
+  if (meta_window_is_attached_dialog (window))
     dx *= 2;
 
   new_w = window->display->grab_anchor_window_pos.width;
@@ -10181,8 +10294,7 @@ meta_window_get_frame_type (MetaWindow *window)
       break;
 
     case META_WINDOW_MODAL_DIALOG:
-      if (meta_prefs_get_attach_modal_dialogs () &&
-          meta_window_get_transient_for (window) != NULL)
+      if (meta_window_is_attached_dialog (window))
         base_type = META_FRAME_TYPE_ATTACHED;
       else
         base_type = META_FRAME_TYPE_MODAL_DIALOG;
@@ -10247,4 +10359,20 @@ meta_window_get_frame_bounds (MetaWindow *window)
     }
 
   return window->frame_bounds;
+}
+
+/**
+ * meta_window_is_attached_dialog:
+ * @window: a #MetaWindow
+ *
+ * Tests if @window is should be attached to its parent window.
+ * (If the "attach_modal_dialogs" option is not enabled, this will
+ * always return %FALSE.)
+ *
+ * Return value: whether @window should be attached to its parent
+ */
+gboolean
+meta_window_is_attached_dialog (MetaWindow *window)
+{
+  return window->attached;
 }

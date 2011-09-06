@@ -1697,12 +1697,9 @@ event_callback (XEvent   *event,
                               window->desc);
                 }
 
-              if (window->frame)
-                {
-                  window->frame->need_reapply_frame_shape = TRUE;
-		  meta_warning("from event callback\n");		  
-                  meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
-                }
+              if (display->compositor)
+                meta_compositor_window_shape_changed (display->compositor,
+                                                      window);
             }
         }
       else
@@ -3527,8 +3524,7 @@ meta_display_begin_grab_op (MetaDisplay *display,
   /* If window is a modal dialog attached to its parent,
    * grab the parent instead for moving.
    */
-  if (meta_prefs_get_attach_modal_dialogs () &&
-      window && window->type == META_WINDOW_MODAL_DIALOG &&
+  if (window && meta_window_is_attached_dialog (window) &&
       meta_grab_op_is_moving (op))
     grab_window = meta_window_get_transient_for (window);
 
@@ -4100,8 +4096,6 @@ meta_display_queue_retheme_all_windows (MetaDisplay *display)
       meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
       if (window->frame)
         {
-          window->frame->need_reapply_frame_shape = TRUE;
-          
           meta_frame_queue_draw (window->frame);
         }
       
@@ -4316,11 +4310,7 @@ process_request_frame_extents (MetaDisplay    *display,
                                          &hints);
   if ((hints_set && hints->decorations) || !hints_set)
     {
-      int top = 0;
-      int bottom = 0;
-      int left = 0;
-      int right = 0;
-
+      MetaFrameBorders borders;
       MetaScreen *screen;
 
       screen = meta_display_screen_for_xwindow (display,
@@ -4338,15 +4328,11 @@ process_request_frame_extents (MetaDisplay    *display,
       meta_ui_theme_get_frame_borders (screen->ui,
                                        META_FRAME_TYPE_NORMAL,
                                        0,
-                                       &top,
-                                       &bottom,
-                                       &left,
-                                       &right);
-
-      data[0] = left;
-      data[1] = right;
-      data[2] = top;
-      data[3] = bottom;
+                                       &borders);
+      data[0] = borders.visible.left;
+      data[1] = borders.visible.right;
+      data[2] = borders.visible.top;
+      data[3] = borders.visible.bottom;
     }
 
   meta_topic (META_DEBUG_GEOMETRY,
@@ -5072,7 +5058,7 @@ meta_display_stack_cmp (const void *a,
  * An example of using this would be to sort the list of transient dialogs for a
  * window into their current stacking order.
  *
- * Returns: (transfer container): Input windows sorted by stacking order, from lowest to highest
+ * Returns: (transfer container) (element-type MetaWindow): Input windows sorted by stacking order, from lowest to highest
  */
 GSList *
 meta_display_sort_windows_by_stacking (MetaDisplay *display,
@@ -5179,34 +5165,6 @@ prefs_changed_callback (MetaPreference pref,
   else if (pref == META_PREF_AUDIBLE_BELL)
     {
       meta_bell_set_audible (display, meta_prefs_bell_is_audible ());
-    }
-  else if (pref == META_PREF_ATTACH_MODAL_DIALOGS)
-    {
-      MetaDisplay *display = data;
-      GSList *windows;
-      GSList *tmp;
-
-      windows = meta_display_list_windows (display, META_LIST_DEFAULT);
-
-      for (tmp = windows; tmp != NULL; tmp = tmp->next)
-        {
-          MetaWindow *w = tmp->data;
-          MetaWindow *parent = meta_window_get_transient_for (w);
-          meta_window_recalc_features (w);
-
-          if (w->type == META_WINDOW_MODAL_DIALOG && parent)
-            {
-              int x, y;
-              /* Forcing a call to move_resize() does two things: first, it handles
-               * resizing the dialog frame window to the correct size when we remove
-               * or add the decorations. Second, it will take care of positioning the
-               * dialog as "attached" to the parent when we turn the preference on
-               * via the constrain_modal_dialog() constraint.
-               **/
-              meta_window_get_position (w, &x, &y);
-              meta_window_move (w, FALSE, x, y);
-            }
-        }
     }
 }
 
