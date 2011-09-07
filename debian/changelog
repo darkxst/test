@@ -1,3 +1,11 @@
+mutter (3.1.90.1-0ubuntu1) oneiric; urgency=low
+
+  * New upstream release.
+  * debian/libmutter0.symbols: Updated
+  * debian/watch: Correctly watch unstable
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Wed, 07 Sep 2011 09:04:44 +0200
+
 mutter (3.1.4-0ubuntu1) oneiric; urgency=low
 
   * New upstream release

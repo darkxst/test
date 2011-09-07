@@ -790,10 +790,9 @@ meta_frames_lookup_window (MetaFrames *frames,
 }
 
 void
-meta_frames_get_geometry (MetaFrames *frames,
-                          Window xwindow,
-                          int *top_height, int *bottom_height,
-                          int *left_width, int *right_width)
+meta_frames_get_borders (MetaFrames *frames,
+                         Window xwindow,
+                         MetaFrameBorders *borders)
 {
   MetaFrameFlags flags;
   MetaUIFrame *frame;
@@ -822,8 +821,41 @@ meta_frames_get_geometry (MetaFrames *frames,
                                 type,
                                 frame->text_height,
                                 flags,
-                                top_height, bottom_height,
-                                left_width, right_width);
+                                borders);
+}
+
+void
+meta_frames_get_corner_radiuses (MetaFrames *frames,
+                                 Window      xwindow,
+                                 float      *top_left,
+                                 float      *top_right,
+                                 float      *bottom_left,
+                                 float      *bottom_right)
+{
+  MetaUIFrame *frame;
+  MetaFrameGeometry fgeom;
+
+  frame = meta_frames_lookup_window (frames, xwindow);
+
+  meta_frames_calc_geometry (frames, frame, &fgeom);
+
+  /* For compatibility with the code in get_visible_rect(), there's
+   * a mysterious sqrt() added to the corner radiuses:
+   *
+   *   const float radius = sqrt(corner) + corner;
+   *
+   * It's unclear why the radius is calculated like this, but we
+   * need to be consistent with it.
+   */
+
+  if (top_left)
+    *top_left = fgeom.top_left_corner_rounded_radius + sqrt(fgeom.top_left_corner_rounded_radius);
+  if (top_right)
+    *top_right = fgeom.top_right_corner_rounded_radius + sqrt(fgeom.top_right_corner_rounded_radius);
+  if (bottom_left)
+    *bottom_left = fgeom.bottom_left_corner_rounded_radius + sqrt(fgeom.bottom_left_corner_rounded_radius);
+  if (bottom_right)
+    *bottom_right = fgeom.bottom_right_corner_rounded_radius + sqrt(fgeom.bottom_right_corner_rounded_radius);
 }
 
 void
@@ -862,51 +894,51 @@ meta_frames_unflicker_bg (MetaFrames *frames,
   set_background_none (GDK_DISPLAY_XDISPLAY (gdk_display_get_default ()), frame->xwindow);
 }
 
-#ifdef HAVE_SHAPE
+/* The client rectangle surrounds client window; it subtracts both
+ * the visible and invisible borders from the frame window's size.
+ */
 static void
-apply_cairo_region_to_window (Display        *display,
-                              Window          xwindow,
-                              cairo_region_t *region,
-                              int             op)
+get_client_rect (MetaFrameGeometry     *fgeom,
+                 int                    window_width,
+                 int                    window_height,
+                 cairo_rectangle_int_t *rect)
 {
-  int n_rects, i;
-  XRectangle *rects;
-
-  n_rects = cairo_region_num_rectangles (region);
-  rects = g_new (XRectangle, n_rects);
-
-  for (i = 0; i < n_rects; i++)
-    {
-      cairo_rectangle_int_t rect;
-
-      cairo_region_get_rectangle (region, i, &rect);
-
-      rects[i].x = rect.x;
-      rects[i].y = rect.y;
-      rects[i].width = rect.width;
-      rects[i].height = rect.height;
-    }
-
-  XShapeCombineRectangles (display, xwindow,
-                           ShapeBounding, 0, 0, rects, n_rects,
-                           op, YXBanded);
-
-  g_free (rects);
+  rect->x = fgeom->borders.total.left;
+  rect->y = fgeom->borders.total.top;
+  rect->width = window_width - fgeom->borders.total.right - rect->x;
+  rect->height = window_height - fgeom->borders.total.bottom - rect->y;
 }
-#endif
+
+/* The visible frame rectangle surrounds the visible portion of the
+ * frame window; it subtracts only the invisible borders from the frame
+ * window's size.
+ */
+static void
+get_visible_frame_rect (MetaFrameGeometry     *fgeom,
+                        int                    window_width,
+                        int                    window_height,
+                        cairo_rectangle_int_t *rect)
+{
+  rect->x = fgeom->borders.invisible.left;
+  rect->y = fgeom->borders.invisible.top;
+  rect->width = window_width - fgeom->borders.invisible.right - rect->x;
+  rect->height = window_height - fgeom->borders.invisible.bottom - rect->y;
+}
 
 static cairo_region_t *
-get_bounds_region (MetaFrames        *frames,
-                  MetaUIFrame       *frame,
-                  MetaFrameGeometry *fgeom,
-                  int                window_width,
-                  int                window_height)
+get_visible_region (MetaFrames        *frames,
+                    MetaUIFrame       *frame,
+                    MetaFrameGeometry *fgeom,
+                    int                window_width,
+                    int                window_height)
 {
   cairo_region_t *corners_region;
-  cairo_region_t *bounds_region;
+  cairo_region_t *visible_region;
   cairo_rectangle_int_t rect;
+  cairo_rectangle_int_t frame_rect;
 
   corners_region = cairo_region_create ();
+  get_visible_frame_rect (fgeom, window_width, window_height, &frame_rect);
   
   if (fgeom->top_left_corner_rounded_radius != 0)
     {
@@ -917,8 +949,8 @@ get_bounds_region (MetaFrames        *frames,
       for (i=0; i<corner; i++)
         {
           const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          rect.x = 0;
-          rect.y = i;
+          rect.x = frame_rect.x;
+          rect.y = frame_rect.y + i;
           rect.width = width;
           rect.height = 1;
           
@@ -935,8 +967,8 @@ get_bounds_region (MetaFrames        *frames,
       for (i=0; i<corner; i++)
         {
           const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          rect.x = window_width - width;
-          rect.y = i;
+          rect.x = frame_rect.x + frame_rect.width - width;
+          rect.y = frame_rect.y + i;
           rect.width = width;
           rect.height = 1;
           
@@ -953,8 +985,8 @@ get_bounds_region (MetaFrames        *frames,
       for (i=0; i<corner; i++)
         {
           const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          rect.x = 0;
-          rect.y = window_height - i - 1;
+          rect.x = frame_rect.x;
+          rect.y = frame_rect.y + frame_rect.height - i - 1;
           rect.width = width;
           rect.height = 1;
           
@@ -971,8 +1003,8 @@ get_bounds_region (MetaFrames        *frames,
       for (i=0; i<corner; i++)
         {
           const int width = floor(0.5 + radius - sqrt(radius*radius - (radius-(i+0.5))*(radius-(i+0.5))));
-          rect.x = window_width - width;
-          rect.y = window_height - i - 1;
+          rect.x = frame_rect.x + frame_rect.width - width;
+          rect.y = frame_rect.y + frame_rect.height - i - 1;
           rect.width = width;
           rect.height = 1;
           
@@ -980,175 +1012,11 @@ get_bounds_region (MetaFrames        *frames,
         }
     }
   
-  bounds_region = cairo_region_create ();
-  
-  rect.x = 0;
-  rect.y = 0;
-  rect.width = window_width;
-  rect.height = window_height;
-
-  cairo_region_union_rectangle (bounds_region, &rect);
-
-  cairo_region_subtract (bounds_region, corners_region);
-
+  visible_region = cairo_region_create_rectangle (&frame_rect);
+  cairo_region_subtract (visible_region, corners_region);
   cairo_region_destroy (corners_region);
 
-  return bounds_region;
-}
-
-static cairo_region_t *
-get_client_region (MetaFrameGeometry *fgeom,
-                   int                window_width,
-                   int                window_height)
-{
-  cairo_rectangle_int_t rect;
-
-  rect.x = fgeom->left_width;
-  rect.y = fgeom->top_height;
-  rect.width = window_width - fgeom->right_width - rect.x;
-  rect.height = window_height - fgeom->bottom_height - rect.y;
-
-  return cairo_region_create_rectangle (&rect);
-}
-
-void
-meta_frames_apply_shapes (MetaFrames *frames,
-                          Window      xwindow,
-                          int         new_window_width,
-                          int         new_window_height,
-                          gboolean    window_has_shape)
-{
-#ifdef HAVE_SHAPE
-  /* Apply shapes as if window had new_window_width, new_window_height */
-  MetaUIFrame *frame;
-  MetaFrameGeometry fgeom;
-  cairo_region_t *window_region;
-  Display *display;
-  
-  frame = meta_frames_lookup_window (frames, xwindow);
-  g_return_if_fail (frame != NULL);
-
-  display = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
-
-  meta_frames_calc_geometry (frames, frame, &fgeom);
-
-  if (!(fgeom.top_left_corner_rounded_radius != 0 ||
-        fgeom.top_right_corner_rounded_radius != 0 ||
-        fgeom.bottom_left_corner_rounded_radius != 0 ||
-        fgeom.bottom_right_corner_rounded_radius != 0 ||
-        window_has_shape))
-    {
-      if (frame->shape_applied)
-        {
-          meta_topic (META_DEBUG_SHAPES,
-                      "Unsetting shape mask on frame 0x%lx\n",
-                      frame->xwindow);
-
-          XShapeCombineMask (display, frame->xwindow,
-                             ShapeBounding, 0, 0, None, ShapeSet);
-          frame->shape_applied = FALSE;
-        }
-      else
-        {
-          meta_topic (META_DEBUG_SHAPES,
-                      "Frame 0x%lx still doesn't need a shape mask\n",
-                      frame->xwindow);
-        }
-
-      return; /* nothing to do */
-    }
-
-  window_region = get_bounds_region (frames, frame,
-                                     &fgeom,
-                                     new_window_width, new_window_height);
-
-  if (window_has_shape)
-    {
-      /* The client window is oclock or something and has a shape
-       * mask. To avoid a round trip to get its shape region, we
-       * create a fake window that's never mapped, build up our shape
-       * on that, then combine. Wasting the window is assumed cheaper
-       * than a round trip, but who really knows for sure.
-       */
-      XSetWindowAttributes attrs;      
-      Window shape_window;
-      Window client_window;
-      cairo_region_t *client_region;
-      GdkScreen *screen;
-      int screen_number;
-      
-      meta_topic (META_DEBUG_SHAPES,
-                  "Frame 0x%lx needs to incorporate client shape\n",
-                  frame->xwindow);
-
-      screen = gtk_widget_get_screen (GTK_WIDGET (frames));
-      screen_number = gdk_x11_screen_get_screen_number (screen);
-      
-      attrs.override_redirect = True;
-      
-      shape_window = XCreateWindow (display,
-                                    RootWindow (display, screen_number),
-                                    -5000, -5000,
-                                    new_window_width,
-                                    new_window_height,
-                                    0,
-                                    CopyFromParent,
-                                    CopyFromParent,
-                                    (Visual *)CopyFromParent,
-                                    CWOverrideRedirect,
-                                    &attrs);
-
-      /* Copy the client's shape to the temporary shape_window */
-      meta_core_get (display, frame->xwindow,
-                     META_CORE_GET_CLIENT_XWINDOW, &client_window,
-                     META_CORE_GET_END);
-
-      XShapeCombineShape (display, shape_window, ShapeBounding,
-                          fgeom.left_width,
-                          fgeom.top_height,
-                          client_window,
-                          ShapeBounding,
-                          ShapeSet);
-
-      /* Punch the client area out of the normal frame shape,
-       * then union it with the shape_window's existing shape
-       */
-      client_region = get_client_region (&fgeom,
-                                         new_window_width,
-                                         new_window_height);
-
-      cairo_region_subtract (window_region, client_region);
-
-      cairo_region_destroy (client_region);
-
-      apply_cairo_region_to_window (display, shape_window,
-                                    window_region, ShapeUnion);
-      
-      /* Now copy shape_window shape to the real frame */
-      XShapeCombineShape (display, frame->xwindow, ShapeBounding,
-                          0, 0,
-                          shape_window,
-                          ShapeBounding,
-                          ShapeSet);
-
-      XDestroyWindow (display, shape_window);
-    }
-  else
-    {
-      /* No shape on the client, so just do simple stuff */
-
-      meta_topic (META_DEBUG_SHAPES,
-                  "Frame 0x%lx has shaped corners\n",
-                  frame->xwindow);
-      
-      apply_cairo_region_to_window (display, frame->xwindow,
-                                    window_region, ShapeSet);
-    }
-  
-  frame->shape_applied = TRUE;
-  
-  cairo_region_destroy (window_region);
-#endif /* HAVE_SHAPE */
+  return visible_region;
 }
 
 cairo_region_t *
@@ -1165,9 +1033,9 @@ meta_frames_get_frame_bounds (MetaFrames *frames,
 
   meta_frames_calc_geometry (frames, frame, &fgeom);
 
-  return get_bounds_region (frames, frame,
-                            &fgeom,
-                            window_width, window_height);
+  return get_visible_region (frames, frame,
+                             &fgeom,
+                             window_width, window_height);
 }
 
 void
@@ -2238,7 +2106,7 @@ static void
 populate_cache (MetaFrames *frames,
                 MetaUIFrame *frame)
 {
-  int top, bottom, left, right;
+  MetaFrameBorders borders;
   int width, height;
   int frame_width, frame_height, screen_width, screen_height;
   CachedPixels *pixels;
@@ -2269,31 +2137,44 @@ populate_cache (MetaFrames *frames,
                                 frame_type,
                                 frame->text_height,
                                 frame_flags,
-                                &top, &bottom, &left, &right);
+                                &borders);
 
   pixels = get_cache (frames, frame);
 
-  /* Setup the rectangles for the four frame borders. First top, then
-     left, right and bottom. */
-  pixels->piece[0].rect.x = 0;
-  pixels->piece[0].rect.y = 0;
-  pixels->piece[0].rect.width = left + width + right;
-  pixels->piece[0].rect.height = top;
+  /* Setup the rectangles for the four visible frame borders. First top, then
+   * left, right and bottom. Top and bottom extend to the invisible borders
+   * while left and right snugly fit in between:
+   *   -----
+   *   |   |
+   *   -----
+   */
 
-  pixels->piece[1].rect.x = 0;
-  pixels->piece[1].rect.y = top;
-  pixels->piece[1].rect.width = left;
+  /* width and height refer to the client window's
+   * size without any border added. */
+
+  /* top */
+  pixels->piece[0].rect.x = borders.invisible.left;
+  pixels->piece[0].rect.y = borders.invisible.top;
+  pixels->piece[0].rect.width = width + borders.visible.left + borders.visible.right;
+  pixels->piece[0].rect.height = borders.visible.top;
+
+  /* left */
+  pixels->piece[1].rect.x = borders.invisible.left;
+  pixels->piece[1].rect.y = borders.total.top;
   pixels->piece[1].rect.height = height;
+  pixels->piece[1].rect.width = borders.visible.left;
 
-  pixels->piece[2].rect.x = left + width;
-  pixels->piece[2].rect.y = top;
-  pixels->piece[2].rect.width = right;
+  /* right */
+  pixels->piece[2].rect.x = borders.total.left + width;
+  pixels->piece[2].rect.y = borders.total.top;
+  pixels->piece[2].rect.width = borders.visible.right;
   pixels->piece[2].rect.height = height;
 
-  pixels->piece[3].rect.x = 0;
-  pixels->piece[3].rect.y = top + height;
-  pixels->piece[3].rect.width = left + width + right;
-  pixels->piece[3].rect.height = bottom;
+  /* bottom */
+  pixels->piece[3].rect.x = borders.invisible.left;
+  pixels->piece[3].rect.y = borders.total.top + height;
+  pixels->piece[3].rect.width = width + borders.visible.left + borders.visible.right;
+  pixels->piece[3].rect.height = borders.visible.bottom;
 
   for (i = 0; i < 4; i++)
     {
@@ -2356,6 +2237,7 @@ subtract_client_area (cairo_region_t *region,
   cairo_rectangle_int_t area;
   MetaFrameFlags flags;
   MetaFrameType type;
+  MetaFrameBorders borders;
   cairo_region_t *tmp_region;
   Display *display;
   
@@ -2368,8 +2250,11 @@ subtract_client_area (cairo_region_t *region,
                  META_CORE_GET_CLIENT_HEIGHT, &area.height,
                  META_CORE_GET_END);
   meta_theme_get_frame_borders (meta_theme_get_current (),
-                         type, frame->text_height, flags, 
-                         &area.y, NULL, &area.x, NULL);
+                                type, frame->text_height, flags, 
+                                &borders);
+
+  area.x = borders.total.left;
+  area.y = borders.total.top;
 
   tmp_region = cairo_region_create_rectangle (&area);
   cairo_region_subtract (region, tmp_region);
@@ -2753,7 +2638,7 @@ control_rect (MetaFrameControl control,
 }
 
 #define RESIZE_EXTENDS 15
-#define TOP_RESIZE_HEIGHT 2
+#define TOP_RESIZE_HEIGHT 4
 static MetaFrameControl
 get_control (MetaFrames *frames,
              MetaUIFrame *frame,
@@ -2761,15 +2646,12 @@ get_control (MetaFrames *frames,
 {
   MetaFrameGeometry fgeom;
   MetaFrameFlags flags;
+  MetaFrameType type;
   gboolean has_vert, has_horiz;
   cairo_rectangle_int_t client;
-  
-  meta_frames_calc_geometry (frames, frame, &fgeom);
 
-  client.x = fgeom.left_width;
-  client.y = fgeom.top_height;
-  client.width = fgeom.width - fgeom.left_width - fgeom.right_width;
-  client.height = fgeom.height - fgeom.top_height - fgeom.bottom_height;  
+  meta_frames_calc_geometry (frames, frame, &fgeom);
+  get_client_rect (&fgeom, fgeom.width, fgeom.height, &client);
 
   if (POINT_IN_RECT (x, y, client))
     return META_FRAME_CONTROL_CLIENT_AREA;
@@ -2786,6 +2668,7 @@ get_control (MetaFrames *frames,
   meta_core_get (GDK_DISPLAY_XDISPLAY (gdk_display_get_default ()),
                  frame->xwindow,
                  META_CORE_GET_FRAME_FLAGS, &flags,
+                 META_CORE_GET_FRAME_TYPE, &type,
                  META_CORE_GET_END);
   
   has_vert = (flags & META_FRAME_ALLOWS_VERTICAL_RESIZE) != 0;
@@ -2793,7 +2676,7 @@ get_control (MetaFrames *frames,
   
   if (POINT_IN_RECT (x, y, fgeom.title_rect))
     {
-      if (has_vert && y <= TOP_RESIZE_HEIGHT)
+      if (has_vert && y <= TOP_RESIZE_HEIGHT && (type != META_FRAME_TYPE_ATTACHED))
         return META_FRAME_CONTROL_RESIZE_N;
       else
         return META_FRAME_CONTROL_TITLE;
@@ -2841,8 +2724,8 @@ get_control (MetaFrames *frames,
    * in case of overlap.
    */
 
-  if (y >= (fgeom.height - fgeom.bottom_height - RESIZE_EXTENDS) &&
-      x >= (fgeom.width - fgeom.right_width - RESIZE_EXTENDS))
+  if (y >= (fgeom.height - fgeom.borders.total.bottom - RESIZE_EXTENDS) &&
+      x >= (fgeom.width - fgeom.borders.total.right - RESIZE_EXTENDS))
     {
       if (has_vert && has_horiz)
         return META_FRAME_CONTROL_RESIZE_SE;
@@ -2851,8 +2734,8 @@ get_control (MetaFrames *frames,
       else if (has_horiz)
         return META_FRAME_CONTROL_RESIZE_E;
     }
-  else if (y >= (fgeom.height - fgeom.bottom_height - RESIZE_EXTENDS) &&
-           x <= (fgeom.left_width + RESIZE_EXTENDS))
+  else if (y >= (fgeom.height - fgeom.borders.total.bottom - RESIZE_EXTENDS) &&
+           x <= (fgeom.borders.total.left + RESIZE_EXTENDS))
     {
       if (has_vert && has_horiz)
         return META_FRAME_CONTROL_RESIZE_SW;
@@ -2861,8 +2744,8 @@ get_control (MetaFrames *frames,
       else if (has_horiz)
         return META_FRAME_CONTROL_RESIZE_W;
     }
-  else if (y < (fgeom.top_height + RESIZE_EXTENDS) &&
-           x < RESIZE_EXTENDS)
+  else if (y < (fgeom.borders.invisible.top + RESIZE_EXTENDS) &&
+           x <= (fgeom.borders.total.left + RESIZE_EXTENDS))
     {
       if (has_vert && has_horiz)
         return META_FRAME_CONTROL_RESIZE_NW;
@@ -2871,8 +2754,8 @@ get_control (MetaFrames *frames,
       else if (has_horiz)
         return META_FRAME_CONTROL_RESIZE_W;
     }
-  else if (y < (fgeom.top_height + RESIZE_EXTENDS) &&
-           x >= (fgeom.width - RESIZE_EXTENDS))
+  else if (y < (fgeom.borders.invisible.top + RESIZE_EXTENDS) &&
+           x >= (fgeom.width - fgeom.borders.total.right - RESIZE_EXTENDS))
     {
       if (has_vert && has_horiz)
         return META_FRAME_CONTROL_RESIZE_NE;
@@ -2881,33 +2764,28 @@ get_control (MetaFrames *frames,
       else if (has_horiz)
         return META_FRAME_CONTROL_RESIZE_E;
     }
-  else if (y >= (fgeom.height - fgeom.bottom_height - RESIZE_EXTENDS))
+  else if (y < (fgeom.borders.invisible.top + TOP_RESIZE_HEIGHT))
+    {
+      if (has_vert)
+        return META_FRAME_CONTROL_RESIZE_N;
+    }
+  else if (y >= (fgeom.height - fgeom.borders.total.bottom - RESIZE_EXTENDS))
     {
       if (has_vert)
         return META_FRAME_CONTROL_RESIZE_S;
     }
-  else if (y <= TOP_RESIZE_HEIGHT)
-    {
-      if (has_vert)
-        return META_FRAME_CONTROL_RESIZE_N;
-      else if (has_horiz)
-        return META_FRAME_CONTROL_TITLE;
-    }
-  else if (x <= fgeom.left_width)
+  else if (x <= fgeom.borders.total.left + RESIZE_EXTENDS)
     {
       if (has_horiz)
         return META_FRAME_CONTROL_RESIZE_W;
     }
-  else if (x >= (fgeom.width - fgeom.right_width))
+  else if (x >= (fgeom.width - fgeom.borders.total.right - RESIZE_EXTENDS))
     {
       if (has_horiz)
         return META_FRAME_CONTROL_RESIZE_E;
     }
 
-  if (y >= fgeom.top_height)
-    return META_FRAME_CONTROL_NONE;
-  else
-    return META_FRAME_CONTROL_TITLE;
+  return META_FRAME_CONTROL_NONE;
 }
 
 void

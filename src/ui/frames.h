@@ -133,10 +133,9 @@ void meta_frames_update_frame_style (MetaFrames *frames,
 void meta_frames_repaint_frame (MetaFrames *frames,
                                 Window      xwindow);
 
-void meta_frames_get_geometry (MetaFrames *frames,
-                               Window xwindow,
-                               int *top_height, int *bottom_height,
-                               int *left_width, int *right_width);
+void meta_frames_get_borders (MetaFrames *frames,
+                              Window xwindow,
+                              MetaFrameBorders *borders);
 
 void meta_frames_reset_bg     (MetaFrames *frames,
                                Window      xwindow);
@@ -145,15 +144,18 @@ void meta_frames_unflicker_bg (MetaFrames *frames,
                                int         target_width,
                                int         target_height);
 
-void meta_frames_apply_shapes (MetaFrames *frames,
-                               Window      xwindow,
-                               int         new_window_width,
-                               int         new_window_height,
-                               gboolean    window_has_shape);
 cairo_region_t *meta_frames_get_frame_bounds (MetaFrames *frames,
                                               Window      xwindow,
                                               int         window_width,
                                               int         window_height);
+
+void meta_frames_get_corner_radiuses (MetaFrames *frames,
+                                      Window      xwindow,
+                                      float      *top_left,
+                                      float      *top_right,
+                                      float      *bottom_left,
+                                      float      *bottom_right);
+
 void meta_frames_move_resize_frame (MetaFrames *frames,
 				    Window      xwindow,
 				    int         x,

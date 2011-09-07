@@ -3241,7 +3241,7 @@ meta_screen_sn_event (SnMonitorEvent *event,
 }
 
 /**
- * meta_screen_get_startup_sequences:
+ * meta_screen_get_startup_sequences: (skip)
  * @screen:
  *
  * Return value: (transfer none): Currently active #SnStartupSequence items

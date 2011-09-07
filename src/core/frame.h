@@ -26,17 +26,6 @@
 
 #include "window-private.h"
 
-typedef struct _MetaFrameGeometry MetaFrameGeometry;
-
-struct _MetaFrameGeometry
-{  
-  /* border sizes (space between frame and child) */
-  int left_width;
-  int right_width;
-  int top_height;
-  int bottom_height;
-};
-
 struct _MetaFrame
 {
   /* window we frame */
@@ -71,8 +60,15 @@ MetaFrameFlags meta_frame_get_flags   (MetaFrame *frame);
 Window         meta_frame_get_xwindow (MetaFrame *frame);
 
 /* These should ONLY be called from meta_window_move_resize_internal */
-void meta_frame_calc_geometry      (MetaFrame         *frame,
-                                    MetaFrameGeometry *geomp);
+void meta_frame_calc_borders      (MetaFrame        *frame,
+                                   MetaFrameBorders *borders);
+
+void meta_frame_get_corner_radiuses (MetaFrame *frame,
+                                     float     *top_left,
+                                     float     *top_right,
+                                     float     *bottom_left,
+                                     float     *bottom_right);
+
 gboolean meta_frame_sync_to_window (MetaFrame         *frame,
                                     int                gravity,
                                     gboolean           need_move,
