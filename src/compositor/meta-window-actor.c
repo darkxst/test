@@ -1218,7 +1218,7 @@ meta_window_actor_should_unredirect (MetaWindowActor *self)
   MetaWindow *metaWindow = meta_window_actor_get_meta_window (self);
   MetaScreen *screen = meta_window_get_screen (metaWindow);
 
-  if (meta_window_is_override_redirect (metaWindow))
+  if (meta_window_is_override_redirect (metaWindow) && self->priv->opacity == 0xff)
     {
       int screen_width, screen_height;
       MetaRectangle window_rect;
@@ -1884,7 +1884,7 @@ check_needs_pixmap (MetaWindowActor *self)
         {
           meta_verbose ("Unable to get named pixmap for %p\n", self);
           meta_window_actor_update_bounding_region_and_borders (self, 0, 0);
-          return;
+          goto out;
         }
 
       if (compositor->no_mipmaps)
@@ -1910,9 +1910,10 @@ check_needs_pixmap (MetaWindowActor *self)
       meta_window_actor_update_bounding_region_and_borders (self, pxm_width, pxm_height);
     }
 
-  meta_error_trap_pop (display);
-
   priv->needs_pixmap = FALSE;
+
+ out:
+  meta_error_trap_pop (display);
 }
 
 static void
@@ -2077,7 +2078,11 @@ update_corners (MetaWindowActor   *self,
   cairo_surface_t *surface;
 
   if (!priv->window->frame)
-    return;
+    {
+      meta_shaped_texture_set_overlay_path (META_SHAPED_TEXTURE (priv->actor),
+                                            NULL, NULL);
+      return;
+    }
 
   meta_window_get_outer_rect (priv->window, &outer);
 
@@ -2288,11 +2293,38 @@ meta_window_actor_pre_paint (MetaWindowActor *self)
       return;
     }
 
-  if (priv->received_damage && !self->priv->unredirected)
+  if (priv->unredirected)
+    {
+      /* Nothing to do here until/if the window gets redirected again */
+      return;
+    }
+
+  if (priv->received_damage)
     {
       meta_error_trap_push (display);
       XDamageSubtract (xdisplay, priv->damage, None, None);
       meta_error_trap_pop (display);
+
+      /* We need to make sure that any X drawing that happens before the
+       * XDamageSubtract() above is visible to subsequent GL rendering;
+       * the only standardized way to do this is EXT_x11_sync_object,
+       * which isn't yet widely available. For now, we count on details
+       * of Xorg and the open source drivers, and hope for the best
+       * otherwise.
+       *
+       * Xorg and open source driver specifics:
+       *
+       * The X server makes sure to flush drawing to the kernel before
+       * sending out damage events, but since we use DamageReportBoundingBox
+       * there may be drawing between the last damage event and the
+       * XDamageSubtract() that needs to be flushed as well.
+       *
+       * Xorg always makes sure that drawing is flushed to the kernel
+       * before writing events or responses to the client, so any round trip
+       * request at this point is sufficient to flush the GLX buffers.
+       */
+      XSync (xdisplay, False);
+
       priv->received_damage = FALSE;
     }
 

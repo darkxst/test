@@ -73,9 +73,11 @@ typedef enum {
 /* This is basically a bogus number, just has to be large enough
  * to handle the expected case of the alt+tab operation, where
  * we want to ignore serials from UnmapNotify on the tab popup,
- * and the LeaveNotify/EnterNotify from the pointer ungrab
+ * and the LeaveNotify/EnterNotify from the pointer ungrab. It
+ * also has to be big enough to hold ignored serials from the point
+ * where we reshape the stage to the point where we get events back.
  */
-#define N_IGNORED_SERIALS           4
+#define N_IGNORED_CROSSING_SERIALS  10
 
 typedef enum {
   META_TILE_NONE,
@@ -153,7 +155,7 @@ struct _MetaDisplay
    * correspond to an enter event we should
    * ignore
    */
-  unsigned long ignored_serials[N_IGNORED_SERIALS];
+  unsigned long ignored_crossing_serials[N_IGNORED_CROSSING_SERIALS];
   Window ungrab_should_not_cause_focus_window;
   
   guint32 current_time;
