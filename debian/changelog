@@ -1,3 +1,10 @@
+mutter (3.1.90.1-0ubuntu2) oneiric; urgency=low
+
+  * debian/patches/04_ignore_shadow_and_padding.patch: Silently ignore
+    padding and shadow tags (LP:800315)
+
+ -- Timo Kluck <tkluck@infty.nl>  Wed, 21 Sep 2011 17:51:28 +0200
+
 mutter (3.1.90.1-0ubuntu1) oneiric; urgency=low
 
   * New upstream release.

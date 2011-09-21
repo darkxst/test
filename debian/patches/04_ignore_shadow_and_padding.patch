@@ -1,0 +1,72 @@
+diff --git a/src/ui/theme-parser.c b/src/ui/theme-parser.c
+index 9063541..ebae83a 100644
+--- a/src/ui/theme-parser.c
++++ b/src/ui/theme-parser.c
+@@ -1306,7 +1306,22 @@ parse_toplevel_element (GMarkupParseContext  *context,
+        */
+       push_state (info, STATE_FALLBACK);
+     }
+-   else
++  else if (ELEMENT_IS ("shadow"))
++    {
++       /* ubuntu specific, workaround for light-themes: silently ignore shadow tag.
++        * We push an unused state instead
++        */
++      push_state (info, STATE_FALLBACK);
++       
++    }
++  else if (ELEMENT_IS ("padding"))
++    {
++       /* ubuntu specific, workaround for light-themes: silently ignore padding tag.
++        * We push an unused state instead.
++        */
++      push_state (info, STATE_FALLBACK);
++    }
++  else
+     {
+       set_error (error, context,
+                  G_MARKUP_ERROR, G_MARKUP_ERROR_PARSE,
+@@ -3027,6 +3042,21 @@ parse_style_element (GMarkupParseContext  *context,
+       
+       push_state (info, STATE_BUTTON);
+     }
++  else if (ELEMENT_IS ("shadow"))
++    {
++       /* ubuntu specific, workaround for light-themes: silently ignore shadow tag.
++        * We push an unused state instead
++        */
++      push_state (info, STATE_FALLBACK);
++       
++    }
++  else if (ELEMENT_IS ("padding"))
++    {
++       /* ubuntu specific, workaround for light-themes: silently ignore padding tag.
++        * We push an unused state instead.
++        */
++      push_state (info, STATE_FALLBACK);
++    }
+   else
+     {
+       set_error (error, context,
+@@ -3920,8 +3950,8 @@ end_element_handler (GMarkupParseContext *context,
+           info->op_list = NULL;
+         }
+       pop_state (info);
+-      break;
+     case STATE_MENU_ICON:
++      break;
+       g_assert (info->theme);
+       if (info->op_list != NULL)
+         {
+@@ -3958,7 +3988,10 @@ end_element_handler (GMarkupParseContext *context,
+       break;
+     case STATE_FALLBACK:
+       pop_state (info);
+-      g_assert (peek_state (info) == STATE_THEME);
++      /* ubuntu specific: we use STATE_FALLBACK for any ignored element. Therefore,
++       * we do not make assertions about its parent.
++       */
++      //g_assert (peek_state (info) == STATE_THEME);
+       break;
+     }
+ 
