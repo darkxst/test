@@ -1,3 +1,18 @@
+mutter (3.1.92-0ubuntu1) oneiric; urgency=low
+
+  * New upstream release.
+    - Fix bug with unredirecting full-screen windows on multi-monitor -
+      notably affected gnome-screensaver
+    - Disable top resizing of attached dialogs
+    - Fix problem where certain application updates would get lost
+    - Fix a problem where after resuming from the screensaver, things got slow
+    - When a monitor is plugged or unplugged, keep existing windows on their
+      current monitor
+    - And other bug fixes
+  * debian/libmutter0.symbols: Updated
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Wed, 21 Sep 2011 11:59:10 -0400
+
 mutter (3.1.90.1-0ubuntu1) oneiric; urgency=low
 
   * New upstream release.

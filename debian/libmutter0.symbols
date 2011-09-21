@@ -113,6 +113,7 @@ libmutter.so.0 libmutter0 #MINVER#
  meta_debug_topic_get_type@Base 2.91.92
  meta_direction_get_type@Base 2.91.92
  meta_disable_unredirect_for_screen@Base 3.1.90
+ meta_display_add_ignored_crossing_serial@Base 3.1.92
  meta_display_begin_grab_op@Base 2.91.92
  meta_display_check_threshold_reached@Base 2.91.92
  meta_display_cleanup_edges@Base 2.91.92
@@ -650,7 +651,6 @@ libmutter.so.0 libmutter0 #MINVER#
  meta_theme_define_float_constant@Base 2.91.92
  meta_theme_define_int_constant@Base 2.91.92
  meta_theme_draw_frame@Base 2.91.92
- meta_theme_draw_frame_by_name@Base 2.91.92
  meta_theme_draw_frame_with_style@Base 2.91.92
  meta_theme_earliest_version_with_button@Base 2.91.92
  meta_theme_free@Base 2.91.92
@@ -927,12 +927,12 @@ libmutter.so.0 libmutter0 #MINVER#
  meta_window_unset_demands_attention@Base 2.91.92
  meta_window_unshade@Base 2.91.92
  meta_window_unstick@Base 2.91.92
+ meta_window_update_for_monitors_changed@Base 3.1.92
  meta_window_update_fullscreen_monitors@Base 2.91.92
  meta_window_update_icon_now@Base 2.91.92
  meta_window_update_keyboard_move@Base 2.91.92
  meta_window_update_keyboard_resize@Base 2.91.92
  meta_window_update_layer@Base 2.91.92
- meta_window_update_monitor@Base 2.91.92
  meta_window_update_net_wm_type@Base 2.91.92
  meta_window_update_on_all_workspaces@Base 2.91.92
  meta_window_update_role@Base 2.91.92
