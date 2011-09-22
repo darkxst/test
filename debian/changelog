@@ -1,8 +1,8 @@
-mutter (3.1.92-0ubuntu2) UNRELEASED; urgency=low
+mutter (3.1.92-0ubuntu2) oneiric; urgency=low
 
   * No-change rebuild against current clutter/cogl. (LP: #856179)
 
- -- Martin Pitt <martin.pitt@ubuntu.com>  Thu, 22 Sep 2011 18:38:49 +0200
+ -- Martin Pitt <martin.pitt@ubuntu.com>  Thu, 22 Sep 2011 18:39:05 +0200
 
 mutter (3.1.92-0ubuntu1) oneiric; urgency=low
 
