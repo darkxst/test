@@ -158,7 +158,7 @@ libmutter_la_SOURCES =				\
 	$(mutter_built_sources)
 
 libmutter_la_LDFLAGS = -no-undefined
-libmutter_la_LIBADD  = $(MUTTER_LIBS) -lclutter-glx-1.0
+libmutter_la_LIBADD  = $(MUTTER_LIBS)
 
 # Headers installed for plugins; introspected information will
 # be extracted into Mutter-<version>.gir
@@ -203,7 +203,7 @@ mutter_theme_viewer_SOURCES=  \
 bin_PROGRAMS=mutter mutter-theme-viewer
 
 mutter_SOURCES = core/mutter.c
-mutter_LDADD = $(MUTTER_LIBS) libmutter.la -lclutter-glx-1.0
+mutter_LDADD = $(MUTTER_LIBS) libmutter.la
 
 if HAVE_INTROSPECTION
 include $(INTROSPECTION_MAKEFILE)

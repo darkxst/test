@@ -1,8 +1,8 @@
 AC_PREREQ(2.50)
 
 m4_define([mutter_major_version], [3])
-m4_define([mutter_minor_version], [1])
-m4_define([mutter_micro_version], [92])
+m4_define([mutter_minor_version], [2])
+m4_define([mutter_micro_version], [0])
 
 m4_define([mutter_version],
           [mutter_major_version.mutter_minor_version.mutter_micro_version])
@@ -15,7 +15,7 @@ AC_INIT([mutter], [mutter_version],
 AC_CONFIG_SRCDIR(src/core/display.c)
 AC_CONFIG_HEADERS(config.h)
 
-AM_INIT_AUTOMAKE([dist-bzip2 no-dist-gzip])
+AM_INIT_AUTOMAKE([1.11 no-dist-gzip dist-xz tar-ustar])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])],)
 AM_MAINTAINER_MODE([enable])
 
@@ -474,6 +474,11 @@ if test "$enable_compile_warnings" != no ; then
     case " $CFLAGS " in
     *[\ \	]-Wpointer-arith[\ \	]*) ;;
     *) CFLAGS="$CFLAGS -Wpointer-arith" ;;
+    esac
+
+    case " $CFLAGS " in
+    *[\ \	]-Wcast-align[\ \	]*) ;;
+    *) CFLAGS="$CFLAGS -Wcast-align" ;;
     esac
 
     case " $CFLAGS " in

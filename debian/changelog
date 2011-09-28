@@ -1,3 +1,18 @@
+mutter (3.2.0-0ubuntu1) UNRELEASED; urgency=low
+
+  * New upstream stable release.
+   - Fix _NET_WM_FRAME_EXTENTS not to include invisible borders
+   - Fix application-specified window placement (-geometry) for
+     invisible borders
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Tue, 27 Sep 2011 21:08:15 -0400
+
+mutter (3.1.92-0ubuntu3) oneiric; urgency=low
+
+  * debian/patches/04_ignore_shadow_and_padding.patch: Silently ignore
+    padding and shadow tags (LP: #800315)
+ -- Timo Kluck <tkluck@infty.nl>   Wed, 21 Sep 2011 17:51:28 +0200
+
 mutter (3.1.92-0ubuntu2) oneiric; urgency=low
 
   * No-change rebuild against current clutter/cogl. (LP: #856179)
