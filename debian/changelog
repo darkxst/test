@@ -1,11 +1,11 @@
-mutter (3.2.0-0ubuntu1) UNRELEASED; urgency=low
+mutter (3.2.0-0ubuntu1) oneiric; urgency=low
 
   * New upstream stable release.
    - Fix _NET_WM_FRAME_EXTENTS not to include invisible borders
    - Fix application-specified window placement (-geometry) for
      invisible borders
 
- -- Jeremy Bicha <jbicha@ubuntu.com>  Tue, 27 Sep 2011 21:08:15 -0400
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Wed, 28 Sep 2011 06:59:26 +0200
 
 mutter (3.1.92-0ubuntu3) oneiric; urgency=low
 
