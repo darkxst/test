@@ -1,0 +1,4 @@
+[remote "origin"]
+        url = bzr::lp:ubuntu/mutter
+        fetch = +refs/heads/*:refs/remotes/origin/*
+
